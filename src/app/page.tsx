@@ -1,6 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 type Message = {
   role: "user" | "assistant";
@@ -26,20 +28,32 @@ function createConversation(): Conversation {
 
 export default function Home() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
-  const [activeConversationId, setActiveConversationId] = useState<string>("");
+  const [activeConversationId, setActiveConversationId] =
+    useState<string>("");
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const storedConversations = localStorage.getItem(STORAGE_KEY);
-    const storedActiveId = localStorage.getItem(ACTIVE_CONVERSATION_KEY);
+    const storedActiveId = localStorage.getItem(
+      ACTIVE_CONVERSATION_KEY,
+    );
 
     if (storedConversations) {
-      const parsed = JSON.parse(storedConversations) as Conversation[];
+      const parsed = JSON.parse(
+        storedConversations,
+      ) as Conversation[];
 
       setConversations(parsed);
 
-      if (storedActiveId && parsed.some((c) => c.id === storedActiveId)) {
+      if (
+        storedActiveId &&
+        parsed.some((conversation) => conversation.id === storedActiveId)
+      ) {
         setActiveConversationId(storedActiveId);
         return;
       }
@@ -74,8 +88,15 @@ export default function Home() {
     );
   }, [activeConversationId]);
 
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({
+      behavior: "smooth",
+    });
+  }, [conversations, activeConversationId]);
+
   const activeConversation = conversations.find(
-    (conversation) => conversation.id === activeConversationId,
+    (conversation) =>
+      conversation.id === activeConversationId,
   );
 
   const createNewConversation = () => {
@@ -88,12 +109,80 @@ export default function Home() {
 
     setActiveConversationId(conversation.id);
     setInput("");
+    setOpenMenuId(null);
+
+    setTimeout(() => {
+      textareaRef.current?.focus();
+    }, 0);
+  };
+
+  const deleteConversation = (conversationId: string) => {
+    setConversations((current) => {
+      const remaining = current.filter(
+        (conversation) =>
+          conversation.id !== conversationId,
+      );
+
+      if (remaining.length === 0) {
+        const newConversation = createConversation();
+
+        setActiveConversationId(newConversation.id);
+
+        return [newConversation];
+      }
+
+      if (conversationId === activeConversationId) {
+        setActiveConversationId(remaining[0].id);
+      }
+
+      return remaining;
+    });
+
+    setOpenMenuId(null);
+    setInput("");
+  };
+
+  const updateAssistantMessage = (
+    conversationId: string,
+    content: string,
+  ) => {
+    setConversations((current) =>
+      current.map((conversation) => {
+        if (conversation.id !== conversationId) {
+          return conversation;
+        }
+
+        const messages = [...conversation.messages];
+        const lastMessageIndex = messages.length - 1;
+
+        if (
+          lastMessageIndex < 0 ||
+          messages[lastMessageIndex].role !== "assistant"
+        ) {
+          return conversation;
+        }
+
+        messages[lastMessageIndex] = {
+          ...messages[lastMessageIndex],
+          content,
+        };
+
+        return {
+          ...conversation,
+          messages,
+        };
+      }),
+    );
   };
 
   const sendMessage = async () => {
     const message = input.trim();
 
-    if (!message || !activeConversation || isLoading) {
+    if (
+      !message ||
+      !activeConversation ||
+      isLoading
+    ) {
       return;
     }
 
@@ -114,6 +203,10 @@ export default function Home() {
                   role: "user",
                   content: message,
                 },
+                {
+                  role: "assistant",
+                  content: "",
+                },
               ],
             }
           : conversation,
@@ -125,7 +218,7 @@ export default function Home() {
 
     try {
       const response = await fetch(
-        "http://127.0.0.1:8008/api/v1/chat",
+        "http://127.0.0.1:8008/api/v1/chat/stream",
         {
           method: "POST",
           headers: {
@@ -139,46 +232,59 @@ export default function Home() {
       );
 
       if (!response.ok) {
-        throw new Error("Failed to send message");
+        throw new Error(
+          `Request failed with status ${response.status}`,
+        );
       }
 
-      const data = await response.json();
+      if (!response.body) {
+        throw new Error("Response body is unavailable");
+      }
 
-      setConversations((current) =>
-        current.map((conversation) =>
-          conversation.id === conversationId
-            ? {
-                ...conversation,
-                messages: [
-                  ...conversation.messages,
-                  {
-                    role: "assistant",
-                    content: data.response,
-                  },
-                ],
-              }
-            : conversation,
-        ),
-      );
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+
+      let assistantResponse = "";
+
+      while (true) {
+        const { value, done } = await reader.read();
+
+        if (done) {
+          break;
+        }
+
+        const chunk = decoder.decode(value, {
+          stream: true,
+        });
+
+        if (!chunk) {
+          continue;
+        }
+
+        assistantResponse += chunk;
+
+        updateAssistantMessage(
+          conversationId,
+          assistantResponse,
+        );
+      }
+
+      const finalChunk = decoder.decode();
+
+      if (finalChunk) {
+        assistantResponse += finalChunk;
+
+        updateAssistantMessage(
+          conversationId,
+          assistantResponse,
+        );
+      }
     } catch (error) {
       console.error(error);
 
-      setConversations((current) =>
-        current.map((conversation) =>
-          conversation.id === conversationId
-            ? {
-                ...conversation,
-                messages: [
-                  ...conversation.messages,
-                  {
-                    role: "assistant",
-                    content:
-                      "Sorry, I couldn't reach LISA right now.",
-                  },
-                ],
-              }
-            : conversation,
-        ),
+      updateAssistantMessage(
+        conversationId,
+        "Sorry, I couldn't reach LISA right now.",
       );
     } finally {
       setIsLoading(false);
@@ -188,7 +294,10 @@ export default function Home() {
   const handleKeyDown = (
     event: React.KeyboardEvent<HTMLTextAreaElement>,
   ) => {
-    if (event.key === "Enter" && !event.shiftKey) {
+    if (
+      event.key === "Enter" &&
+      !event.shiftKey
+    ) {
       event.preventDefault();
       sendMessage();
     }
@@ -196,7 +305,6 @@ export default function Home() {
 
   return (
     <main className="flex h-screen overflow-hidden bg-black text-zinc-100">
-      {/* Sidebar */}
       <aside className="hidden w-64 shrink-0 flex-col border-r border-zinc-800 bg-zinc-950 md:flex">
         <div className="flex h-16 items-center px-5">
           <div className="flex items-center gap-3">
@@ -227,21 +335,65 @@ export default function Home() {
 
           <div className="mt-3 space-y-1">
             {conversations.map((conversation) => (
-              <button
+              <div
                 key={conversation.id}
-                onClick={() =>
-                  setActiveConversationId(conversation.id)
-                }
-                className={`w-full rounded-lg px-3 py-2 text-left text-sm transition ${
-                  conversation.id === activeConversationId
-                    ? "bg-zinc-900 text-zinc-200"
-                    : "text-zinc-500 hover:bg-zinc-900 hover:text-zinc-300"
-                }`}
+                className="group relative"
               >
-                <span className="block truncate">
-                  {conversation.title}
-                </span>
-              </button>
+                <button
+                  onClick={() => {
+                    setActiveConversationId(
+                      conversation.id,
+                    );
+                    setOpenMenuId(null);
+                  }}
+                  className={`w-full rounded-lg px-3 py-2 pr-10 text-left text-sm transition ${
+                    conversation.id === activeConversationId
+                      ? "bg-zinc-900 text-zinc-200"
+                      : "text-zinc-500 hover:bg-zinc-900 hover:text-zinc-300"
+                  }`}
+                >
+                  <span className="block truncate">
+                    {conversation.title}
+                  </span>
+                </button>
+
+                <button
+                  onClick={(event) => {
+                    event.stopPropagation();
+
+                    setOpenMenuId((current) =>
+                      current === conversation.id
+                        ? null
+                        : conversation.id,
+                    );
+                  }}
+                  className={`absolute right-1 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-md text-zinc-500 transition hover:bg-zinc-800 hover:text-zinc-200 ${
+                    openMenuId === conversation.id
+                      ? "opacity-100"
+                      : "opacity-0 group-hover:opacity-100"
+                  }`}
+                  aria-label="Conversation options"
+                >
+                  <span className="text-lg leading-none">
+                    ⋯
+                  </span>
+                </button>
+
+                {openMenuId === conversation.id && (
+                  <div className="absolute right-1 top-10 z-20 w-32 rounded-lg border border-zinc-800 bg-zinc-900 p-1 shadow-xl shadow-black/50">
+                    <button
+                      onClick={() =>
+                        deleteConversation(
+                          conversation.id,
+                        )
+                      }
+                      className="w-full rounded-md px-3 py-2 text-left text-sm text-red-400 transition hover:bg-zinc-800 hover:text-red-300"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                )}
+              </div>
             ))}
           </div>
         </div>
@@ -254,7 +406,6 @@ export default function Home() {
         </div>
       </aside>
 
-      {/* Main chat */}
       <section className="flex min-w-0 flex-1 flex-col">
         <header className="flex h-16 shrink-0 items-center justify-between border-b border-zinc-800 px-4 md:px-6">
           <div>
@@ -269,13 +420,13 @@ export default function Home() {
 
           <div className="flex items-center gap-2 rounded-full border border-zinc-800 px-3 py-1.5">
             <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+
             <span className="text-xs text-zinc-500">
               Online
             </span>
           </div>
         </header>
 
-        {/* Messages */}
         <div className="flex-1 overflow-y-auto">
           {!activeConversation ||
           activeConversation.messages.length === 0 ? (
@@ -290,8 +441,8 @@ export default function Home() {
 
               <p className="mt-3 max-w-md text-center text-sm leading-6 text-zinc-500">
                 Ask LISA about network operations,
-                troubleshooting, configuration, or technical
-                issues.
+                troubleshooting, configuration, or
+                technical issues.
               </p>
 
               <div className="mt-8 grid w-full max-w-2xl gap-2 sm:grid-cols-2">
@@ -303,7 +454,10 @@ export default function Home() {
                 ].map((prompt) => (
                   <button
                     key={prompt}
-                    onClick={() => setInput(prompt)}
+                    onClick={() => {
+                      setInput(prompt);
+                      textareaRef.current?.focus();
+                    }}
                     className="rounded-xl border border-zinc-800 bg-zinc-950 p-4 text-left text-sm text-zinc-400 transition hover:border-zinc-700 hover:bg-zinc-900 hover:text-zinc-200"
                   >
                     {prompt}
@@ -324,36 +478,44 @@ export default function Home() {
                           : "flex justify-start"
                       }
                     >
-                      <div
-                        className={
-                          message.role === "user"
-                            ? "max-w-[80%] rounded-2xl bg-zinc-800 px-4 py-3 text-sm leading-6 text-zinc-100"
-                            : "max-w-[90%] whitespace-pre-wrap text-sm leading-7 text-zinc-300"
-                        }
-                      >
-                        {message.content}
-                      </div>
+                      {message.role === "user" ? (
+                        <div className="max-w-[80%] whitespace-pre-wrap rounded-2xl bg-zinc-800 px-4 py-3 text-sm leading-6 text-zinc-100">
+                          {message.content}
+                        </div>
+                      ) : (
+                        <div className="prose prose-invert max-w-[90%] text-sm leading-7">
+                          <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                            {message.content}
+                          </ReactMarkdown>
+                        </div>
+                      )}
                     </div>
                   ),
                 )}
 
-                {isLoading && (
-                  <div className="flex justify-start">
-                    <div className="text-sm text-zinc-600">
-                      LISA is thinking...
+                {isLoading &&
+                  activeConversation.messages.at(-1)
+                    ?.role === "assistant" &&
+                  activeConversation.messages.at(-1)
+                    ?.content === "" && (
+                    <div className="flex justify-start">
+                      <div className="text-sm text-zinc-600">
+                        LISA is thinking...
+                      </div>
                     </div>
-                  </div>
-                )}
+                  )}
+
+                <div ref={messagesEndRef} />
               </div>
             </div>
           )}
         </div>
 
-        {/* Composer */}
         <div className="shrink-0 px-4 pb-5 md:px-6">
           <div className="mx-auto max-w-3xl">
             <div className="flex items-end rounded-2xl border border-zinc-800 bg-zinc-950 p-2 shadow-2xl shadow-black/50 transition focus-within:border-zinc-700">
               <textarea
+                ref={textareaRef}
                 value={input}
                 onChange={(event) =>
                   setInput(event.target.value)
@@ -376,8 +538,8 @@ export default function Home() {
             </div>
 
             <p className="mt-2 text-center text-xs text-zinc-700">
-              LISA can make mistakes. Verify important network
-              operations.
+              LISA can make mistakes. Verify important
+              network operations.
             </p>
           </div>
         </div>
