@@ -31,6 +31,12 @@ function createConversation(): Conversation {
   };
 }
 
+function waitForNextPaint(): Promise<void> {
+  return new Promise((resolve) => {
+    requestAnimationFrame(() => resolve());
+  });
+}
+
 export default function Home() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeConversationId, setActiveConversationId] =
@@ -78,7 +84,9 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    if (conversations.length === 0) return;
+    if (conversations.length === 0) {
+      return;
+    }
 
     localStorage.setItem(
       STORAGE_KEY,
@@ -87,7 +95,9 @@ export default function Home() {
   }, [conversations]);
 
   useEffect(() => {
-    if (!activeConversationId) return;
+    if (!activeConversationId) {
+      return;
+    }
 
     localStorage.setItem(
       ACTIVE_CONVERSATION_KEY,
@@ -228,8 +238,10 @@ export default function Home() {
         "http://127.0.0.1:8008/api/v1/chat/stream",
         {
           method: "POST",
+          cache: "no-store",
           headers: {
             "Content-Type": "application/json",
+            Accept: "application/x-ndjson",
           },
           body: JSON.stringify({
             conversation_id: conversationId,
@@ -246,14 +258,16 @@ export default function Home() {
       }
 
       if (!response.body) {
-        throw new Error("Response body is unavailable");
+        throw new Error(
+          "Response body is unavailable",
+        );
       }
 
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
 
-      let assistantResponse = "";
       let buffer = "";
+      let assistantResponse = "";
 
       while (true) {
         const { value, done } = await reader.read();
@@ -268,7 +282,7 @@ export default function Home() {
 
         const lines = buffer.split("\n");
 
-        // Keep the final incomplete line in the buffer.
+        // The final item may be an incomplete JSON object.
         buffer = lines.pop() ?? "";
 
         for (const line of lines) {
@@ -281,7 +295,9 @@ export default function Home() {
           let event: StreamEvent;
 
           try {
-            event = JSON.parse(trimmedLine) as StreamEvent;
+            event = JSON.parse(
+              trimmedLine,
+            ) as StreamEvent;
           } catch (error) {
             console.error(
               "Failed to parse streaming event:",
@@ -292,29 +308,42 @@ export default function Home() {
           }
 
           if (event.type === "reasoning") {
-            // Reasoning is intentionally not rendered as
-            // the assistant's final answer yet.
+            // We will render reasoning separately later.
             continue;
           }
 
-          if (event.type === "content") {
-            assistantResponse += event.content;
-
-            updateAssistantMessage(
-              conversationId,
-              assistantResponse,
-            );
+          if (event.type !== "content") {
+            continue;
           }
+
+          assistantResponse += event.content;
+
+          updateAssistantMessage(
+            conversationId,
+            assistantResponse,
+          );
+
+          /*
+           * Give the browser an opportunity to paint the
+           * updated Markdown before processing more chunks.
+           *
+           * Without this, a fast stream can be consumed
+           * continuously by JavaScript and the browser may
+           * paint only after the stream has finished.
+           */
+          await waitForNextPaint();
         }
       }
 
       // Flush any remaining decoder bytes.
       buffer += decoder.decode();
 
-      if (buffer.trim()) {
+      const finalLine = buffer.trim();
+
+      if (finalLine) {
         try {
           const event = JSON.parse(
-            buffer.trim(),
+            finalLine,
           ) as StreamEvent;
 
           if (event.type === "content") {
@@ -324,11 +353,13 @@ export default function Home() {
               conversationId,
               assistantResponse,
             );
+
+            await waitForNextPaint();
           }
         } catch (error) {
           console.error(
             "Failed to parse final streaming event:",
-            buffer,
+            finalLine,
             error,
           );
         }
@@ -537,12 +568,14 @@ export default function Home() {
                           {message.content}
                         </div>
                       ) : (
-                        <div className="prose prose-invert max-w-[90%] text-sm leading-7">
-                          <ReactMarkdown
-                            remarkPlugins={[remarkGfm]}
-                          >
-                            {message.content}
-                          </ReactMarkdown>
+                        <div className="max-w-[90%] text-sm leading-7 text-zinc-200">
+                          <div className="prose prose-invert max-w-none prose-headings:text-zinc-100 prose-p:text-zinc-200 prose-strong:text-zinc-100 prose-code:text-zinc-200 prose-pre:border prose-pre:border-zinc-800 prose-pre:bg-zinc-950 prose-li:text-zinc-200 prose-a:text-zinc-100 prose-table:text-zinc-200">
+                            <ReactMarkdown
+                              remarkPlugins={[remarkGfm]}
+                            >
+                              {message.content}
+                            </ReactMarkdown>
+                          </div>
                         </div>
                       )}
                     </div>
