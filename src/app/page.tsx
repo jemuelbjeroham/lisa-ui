@@ -45,6 +45,9 @@ export default function Home() {
   const [isLoading, setIsLoading] = useState(false);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
 
+  // Controls whether the thinking model is used.
+  const [enableThinking, setEnableThinking] = useState(false);
+
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -246,7 +249,7 @@ export default function Home() {
           body: JSON.stringify({
             conversation_id: conversationId,
             message,
-            enable_thinking: false,
+            enable_thinking: enableThinking,
           }),
         },
       );
@@ -308,7 +311,7 @@ export default function Home() {
           }
 
           if (event.type === "reasoning") {
-            // We will render reasoning separately later.
+            // We will render reasoning separately in the next step.
             continue;
           }
 
@@ -323,14 +326,6 @@ export default function Home() {
             assistantResponse,
           );
 
-          /*
-           * Give the browser an opportunity to paint the
-           * updated Markdown before processing more chunks.
-           *
-           * Without this, a fast stream can be consumed
-           * continuously by JavaScript and the browser may
-           * paint only after the stream has finished.
-           */
           await waitForNextPaint();
         }
       }
@@ -390,6 +385,7 @@ export default function Home() {
 
   return (
     <main className="flex h-screen overflow-hidden bg-black text-zinc-100">
+      {/* Sidebar */}
       <aside className="hidden w-64 shrink-0 flex-col border-r border-zinc-800 bg-zinc-950 md:flex">
         <div className="flex h-16 items-center px-5">
           <div className="flex items-center gap-3">
@@ -491,6 +487,7 @@ export default function Home() {
         </div>
       </aside>
 
+      {/* Main */}
       <section className="flex min-w-0 flex-1 flex-col">
         <header className="flex h-16 shrink-0 items-center justify-between border-b border-zinc-800 px-4 md:px-6">
           <div>
@@ -512,6 +509,7 @@ export default function Home() {
           </div>
         </header>
 
+        {/* Messages */}
         <div className="flex-1 overflow-y-auto">
           {!activeConversation ||
           activeConversation.messages.length === 0 ? (
@@ -600,9 +598,11 @@ export default function Home() {
           )}
         </div>
 
+        {/* Composer */}
         <div className="shrink-0 px-4 pb-5 md:px-6">
           <div className="mx-auto max-w-3xl">
-            <div className="flex items-end rounded-2xl border border-zinc-800 bg-zinc-950 p-2 shadow-2xl shadow-black/50 transition focus-within:border-zinc-700">
+            <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-2 shadow-2xl shadow-black/50 transition focus-within:border-zinc-700">
+              {/* Text input */}
               <textarea
                 ref={textareaRef}
                 value={input}
@@ -613,17 +613,58 @@ export default function Home() {
                 placeholder="Message LISA..."
                 rows={1}
                 disabled={isLoading}
-                className="max-h-40 min-h-11 flex-1 resize-none bg-transparent px-3 py-2.5 text-sm text-zinc-100 outline-none placeholder:text-zinc-600"
+                className="max-h-40 min-h-11 w-full resize-none bg-transparent px-3 py-2.5 text-sm text-zinc-100 outline-none placeholder:text-zinc-600"
               />
 
-              <button
-                onClick={sendMessage}
-                disabled={!input.trim() || isLoading}
-                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-black transition hover:bg-zinc-200 disabled:cursor-not-allowed disabled:bg-zinc-800 disabled:text-zinc-600"
-                aria-label="Send message"
-              >
-                ↑
-              </button>
+              {/* Composer toolbar */}
+              <div className="mt-2 flex items-center justify-between border-t border-zinc-900 px-1 pt-2">
+                {/* Thinking toggle */}
+                <button
+                  type="button"
+                  onClick={() =>
+                    setEnableThinking(
+                      (current) => !current,
+                    )
+                  }
+                  disabled={isLoading}
+                  aria-pressed={enableThinking}
+                  className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-medium transition ${
+                    enableThinking
+                      ? "border-zinc-600 bg-zinc-800 text-white"
+                      : "border-zinc-800 bg-zinc-950 text-zinc-400 hover:border-zinc-700 hover:bg-zinc-900 hover:text-zinc-200"
+                  } disabled:cursor-not-allowed disabled:opacity-50`}
+                >
+                  <span className="text-base">
+                    🧠
+                  </span>
+
+                  <span>
+                    {enableThinking
+                      ? "Thinking enabled"
+                      : "Thinking"}
+                  </span>
+
+                  <span
+                    className={`h-2 w-2 rounded-full ${
+                      enableThinking
+                        ? "bg-emerald-400"
+                        : "bg-zinc-600"
+                    }`}
+                  />
+                </button>
+
+                {/* Send button */}
+                <button
+                  onClick={sendMessage}
+                  disabled={
+                    !input.trim() || isLoading
+                  }
+                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-black transition hover:bg-zinc-200 disabled:cursor-not-allowed disabled:bg-zinc-800 disabled:text-zinc-600"
+                  aria-label="Send message"
+                >
+                  ↑
+                </button>
+              </div>
             </div>
 
             <p className="mt-2 text-center text-xs text-zinc-700">
