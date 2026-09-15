@@ -15,6 +15,11 @@ type Conversation = {
   messages: Message[];
 };
 
+type StreamEvent = {
+  type: "reasoning" | "content";
+  content: string;
+};
+
 const STORAGE_KEY = "lisa-conversations";
 const ACTIVE_CONVERSATION_KEY = "lisa-active-conversation";
 
@@ -52,7 +57,9 @@ export default function Home() {
 
       if (
         storedActiveId &&
-        parsed.some((conversation) => conversation.id === storedActiveId)
+        parsed.some(
+          (conversation) => conversation.id === storedActiveId,
+        )
       ) {
         setActiveConversationId(storedActiveId);
         return;
@@ -227,6 +234,7 @@ export default function Home() {
           body: JSON.stringify({
             conversation_id: conversationId,
             message,
+            enable_thinking: false,
           }),
         },
       );
@@ -245,6 +253,7 @@ export default function Home() {
       const decoder = new TextDecoder();
 
       let assistantResponse = "";
+      let buffer = "";
 
       while (true) {
         const { value, done } = await reader.read();
@@ -253,31 +262,76 @@ export default function Home() {
           break;
         }
 
-        const chunk = decoder.decode(value, {
+        buffer += decoder.decode(value, {
           stream: true,
         });
 
-        if (!chunk) {
-          continue;
+        const lines = buffer.split("\n");
+
+        // Keep the final incomplete line in the buffer.
+        buffer = lines.pop() ?? "";
+
+        for (const line of lines) {
+          const trimmedLine = line.trim();
+
+          if (!trimmedLine) {
+            continue;
+          }
+
+          let event: StreamEvent;
+
+          try {
+            event = JSON.parse(trimmedLine) as StreamEvent;
+          } catch (error) {
+            console.error(
+              "Failed to parse streaming event:",
+              trimmedLine,
+              error,
+            );
+            continue;
+          }
+
+          if (event.type === "reasoning") {
+            // Reasoning is intentionally not rendered as
+            // the assistant's final answer yet.
+            continue;
+          }
+
+          if (event.type === "content") {
+            assistantResponse += event.content;
+
+            updateAssistantMessage(
+              conversationId,
+              assistantResponse,
+            );
+          }
         }
-
-        assistantResponse += chunk;
-
-        updateAssistantMessage(
-          conversationId,
-          assistantResponse,
-        );
       }
 
-      const finalChunk = decoder.decode();
+      // Flush any remaining decoder bytes.
+      buffer += decoder.decode();
 
-      if (finalChunk) {
-        assistantResponse += finalChunk;
+      if (buffer.trim()) {
+        try {
+          const event = JSON.parse(
+            buffer.trim(),
+          ) as StreamEvent;
 
-        updateAssistantMessage(
-          conversationId,
-          assistantResponse,
-        );
+          if (event.type === "content") {
+            assistantResponse += event.content;
+
+            updateAssistantMessage(
+              conversationId,
+              assistantResponse,
+            );
+          }
+        } catch (error) {
+          console.error(
+            "Failed to parse final streaming event:",
+            buffer,
+            error,
+          );
+        }
       }
     } catch (error) {
       console.error(error);
@@ -484,7 +538,9 @@ export default function Home() {
                         </div>
                       ) : (
                         <div className="prose prose-invert max-w-[90%] text-sm leading-7">
-                          <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                          <ReactMarkdown
+                            remarkPlugins={[remarkGfm]}
+                          >
                             {message.content}
                           </ReactMarkdown>
                         </div>
