@@ -44,12 +44,16 @@ export default function Home() {
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
-
-  // Controls whether the thinking model is used.
   const [enableThinking, setEnableThinking] = useState(false);
+
+  const [reasoning, setReasoning] = useState("");
+  const [isThinking, setIsThinking] = useState(false);
+  const [isReasoningOpen, setIsReasoningOpen] = useState(true);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  const reasoningStartTimeRef = useRef<number | null>(null);
 
   useEffect(() => {
     const storedConversations = localStorage.getItem(STORAGE_KEY);
@@ -112,7 +116,7 @@ export default function Home() {
     messagesEndRef.current?.scrollIntoView({
       behavior: "smooth",
     });
-  }, [conversations, activeConversationId]);
+  }, [conversations, activeConversationId, reasoning]);
 
   const activeConversation = conversations.find(
     (conversation) =>
@@ -130,6 +134,10 @@ export default function Home() {
     setActiveConversationId(conversation.id);
     setInput("");
     setOpenMenuId(null);
+
+    setReasoning("");
+    setIsThinking(false);
+    setIsReasoningOpen(true);
 
     setTimeout(() => {
       textareaRef.current?.focus();
@@ -160,6 +168,10 @@ export default function Home() {
 
     setOpenMenuId(null);
     setInput("");
+
+    setReasoning("");
+    setIsThinking(false);
+    setIsReasoningOpen(true);
   };
 
   const updateAssistantMessage = (
@@ -207,6 +219,15 @@ export default function Home() {
     }
 
     const conversationId = activeConversation.id;
+    const thinkingEnabledForRequest = enableThinking;
+
+    setReasoning("");
+    setIsThinking(thinkingEnabledForRequest);
+    setIsReasoningOpen(true);
+    reasoningStartTimeRef.current =
+      thinkingEnabledForRequest
+        ? performance.now()
+        : null;
 
     setConversations((current) =>
       current.map((conversation) =>
@@ -249,7 +270,7 @@ export default function Home() {
           body: JSON.stringify({
             conversation_id: conversationId,
             message,
-            enable_thinking: enableThinking,
+            enable_thinking: thinkingEnabledForRequest,
           }),
         },
       );
@@ -311,12 +332,32 @@ export default function Home() {
           }
 
           if (event.type === "reasoning") {
-            // We will render reasoning separately in the next step.
+            if (!reasoningStartTimeRef.current) {
+              reasoningStartTimeRef.current =
+                performance.now();
+            }
+
+            setIsThinking(true);
+
+            setReasoning((current) =>
+              current + event.content,
+            );
+
+            await waitForNextPaint();
+
             continue;
           }
 
           if (event.type !== "content") {
             continue;
+          }
+
+          /*
+           * The first content event means the reasoning
+           * phase has finished.
+           */
+          if (thinkingEnabledForRequest) {
+            setIsThinking(false);
           }
 
           assistantResponse += event.content;
@@ -341,7 +382,17 @@ export default function Home() {
             finalLine,
           ) as StreamEvent;
 
+          if (event.type === "reasoning") {
+            setReasoning((current) =>
+              current + event.content,
+            );
+          }
+
           if (event.type === "content") {
+            if (thinkingEnabledForRequest) {
+              setIsThinking(false);
+            }
+
             assistantResponse += event.content;
 
             updateAssistantMessage(
@@ -362,12 +413,15 @@ export default function Home() {
     } catch (error) {
       console.error(error);
 
+      setIsThinking(false);
+
       updateAssistantMessage(
         conversationId,
         "Sorry, I couldn't reach LISA right now.",
       );
     } finally {
       setIsLoading(false);
+      setIsThinking(false);
     }
   };
 
@@ -382,6 +436,15 @@ export default function Home() {
       sendMessage();
     }
   };
+
+  const reasoningDuration =
+    reasoningStartTimeRef.current !== null
+      ? (
+          (performance.now() -
+            reasoningStartTimeRef.current) /
+          1000
+        ).toFixed(1)
+      : null;
 
   return (
     <main className="flex h-screen overflow-hidden bg-black text-zinc-100">
@@ -426,6 +489,10 @@ export default function Home() {
                       conversation.id,
                     );
                     setOpenMenuId(null);
+
+                    setReasoning("");
+                    setIsThinking(false);
+                    setIsReasoningOpen(true);
                   }}
                   className={`w-full rounded-lg px-3 py-2 pr-10 text-left text-sm transition ${
                     conversation.id === activeConversationId
@@ -580,14 +647,70 @@ export default function Home() {
                   ),
                 )}
 
+                {/* Thinking panel */}
+                {enableThinking &&
+                  (isThinking || reasoning) && (
+                    <div className="flex justify-start">
+                      <div className="w-full max-w-[90%]">
+                        <div className="overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setIsReasoningOpen(
+                                (current) => !current,
+                              )
+                            }
+                            className="flex w-full items-center gap-2 px-4 py-3 text-left transition hover:bg-zinc-900"
+                          >
+                            <span className="text-sm">
+                              {isThinking
+                                ? "🧠"
+                                : "✓"}
+                            </span>
+
+                            <span className="text-sm font-medium text-zinc-300">
+                              {isThinking
+                                ? "Thinking..."
+                                : "Thought process"}
+                            </span>
+
+                            {!isThinking &&
+                              reasoningDuration && (
+                                <span className="text-xs text-zinc-600">
+                                  {reasoningDuration}s
+                                </span>
+                              )}
+
+                            <span className="ml-auto text-xs text-zinc-600">
+                              {isReasoningOpen
+                                ? "⌃"
+                                : "⌄"}
+                            </span>
+                          </button>
+
+                          {isReasoningOpen && (
+                            <div className="border-t border-zinc-900 px-4 py-3">
+                              <div className="max-h-72 overflow-y-auto whitespace-pre-wrap text-xs leading-6 text-zinc-500">
+                                {reasoning ||
+                                  "LISA is working through the problem..."}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
                 {isLoading &&
                   activeConversation.messages.at(-1)
                     ?.role === "assistant" &&
                   activeConversation.messages.at(-1)
-                    ?.content === "" && (
+                    ?.content === "" &&
+                  !isThinking &&
+                  !reasoning && (
                     <div className="flex justify-start">
                       <div className="text-sm text-zinc-600">
-                        LISA is thinking...
+                        LISA is responding...
                       </div>
                     </div>
                   )}
@@ -602,7 +725,6 @@ export default function Home() {
         <div className="shrink-0 px-4 pb-5 md:px-6">
           <div className="mx-auto max-w-3xl">
             <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-2 shadow-2xl shadow-black/50 transition focus-within:border-zinc-700">
-              {/* Text input */}
               <textarea
                 ref={textareaRef}
                 value={input}
@@ -616,9 +738,7 @@ export default function Home() {
                 className="max-h-40 min-h-11 w-full resize-none bg-transparent px-3 py-2.5 text-sm text-zinc-100 outline-none placeholder:text-zinc-600"
               />
 
-              {/* Composer toolbar */}
               <div className="mt-2 flex items-center justify-between border-t border-zinc-900 px-1 pt-2">
-                {/* Thinking toggle */}
                 <button
                   type="button"
                   onClick={() =>
@@ -653,7 +773,6 @@ export default function Home() {
                   />
                 </button>
 
-                {/* Send button */}
                 <button
                   onClick={sendMessage}
                   disabled={
