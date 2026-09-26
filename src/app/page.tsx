@@ -46,6 +46,9 @@ export default function Home() {
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [enableThinking, setEnableThinking] = useState(false);
 
+  // Sidebar state
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+
   const [reasoning, setReasoning] = useState("");
   const [isThinking, setIsThinking] = useState(false);
   const [isReasoningOpen, setIsReasoningOpen] = useState(true);
@@ -306,7 +309,6 @@ export default function Home() {
 
         const lines = buffer.split("\n");
 
-        // The final item may be an incomplete JSON object.
         buffer = lines.pop() ?? "";
 
         for (const line of lines) {
@@ -448,34 +450,78 @@ export default function Home() {
 
   return (
     <main className="flex h-screen overflow-hidden bg-black text-zinc-100">
-      {/* Sidebar */}
-      <aside className="hidden w-64 shrink-0 flex-col border-r border-zinc-800 bg-zinc-950 md:flex">
-        <div className="flex h-16 items-center px-5">
-          <div className="flex items-center gap-3">
+
+      {/* =========================================================
+          SIDEBAR
+      ========================================================= */}
+      <aside
+        className={`hidden shrink-0 flex-col border-r border-zinc-800 bg-zinc-950 transition-all duration-200 md:flex ${
+          sidebarCollapsed ? "w-16" : "w-64"
+        }`}
+      >
+        {/* Sidebar Header */}
+        <div
+          className={`flex h-16 items-center ${
+            sidebarCollapsed
+              ? "justify-center"
+              : "justify-between px-4"
+          }`}
+        >
+          {!sidebarCollapsed && (
+            <div className="flex items-center gap-3">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-white text-sm font-bold text-black">
+                L
+              </div>
+
+              <span className="text-lg font-semibold tracking-tight">
+                LISA
+              </span>
+            </div>
+          )}
+
+          {sidebarCollapsed && (
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-white text-sm font-bold text-black">
               L
             </div>
-
-            <span className="text-lg font-semibold tracking-tight">
-              LISA
-            </span>
-          </div>
+          )}
         </div>
 
-        <div className="px-3">
+        {/* New Conversation */}
+        <div className={sidebarCollapsed ? "px-2" : "px-3"}>
           <button
             onClick={createNewConversation}
-            className="flex w-full items-center gap-3 rounded-lg border border-zinc-800 px-3 py-2.5 text-sm text-zinc-300 transition hover:border-zinc-700 hover:bg-zinc-900 hover:text-white"
+            className={`flex w-full items-center rounded-lg border border-zinc-800 text-base text-zinc-300 transition hover:border-zinc-700 hover:bg-zinc-900 hover:text-white ${
+              sidebarCollapsed
+                ? "h-10 justify-center"
+                : "gap-3 px-3 py-2.5"
+            }`}
+            title={
+              sidebarCollapsed
+                ? "New conversation"
+                : undefined
+            }
           >
-            <span className="text-lg">+</span>
-            New conversation
+            <span className="text-xl leading-none">
+              +
+            </span>
+
+            {!sidebarCollapsed && (
+              <span>New conversation</span>
+            )}
           </button>
         </div>
 
-        <div className="mt-6 flex-1 overflow-y-auto px-3">
-          <p className="px-2 text-xs font-medium uppercase tracking-wider text-zinc-600">
-            Conversations
-          </p>
+        {/* Conversations */}
+        <div
+          className={`mt-6 flex-1 overflow-y-auto ${
+            sidebarCollapsed ? "px-2" : "px-3"
+          }`}
+        >
+          {!sidebarCollapsed && (
+            <p className="px-2 text-sm font-medium uppercase tracking-wider text-zinc-600">
+              Conversations
+            </p>
+          )}
 
           <div className="mt-3 space-y-1">
             {conversations.map((conversation) => (
@@ -494,89 +540,199 @@ export default function Home() {
                     setIsThinking(false);
                     setIsReasoningOpen(true);
                   }}
-                  className={`w-full rounded-lg px-3 py-2 pr-10 text-left text-sm transition ${
-                    conversation.id === activeConversationId
+                  className={`w-full rounded-lg py-2.5 text-left text-base transition ${
+                    sidebarCollapsed
+                      ? "flex justify-center px-2"
+                      : "px-3 pr-10"
+                  } ${
+                    conversation.id ===
+                    activeConversationId
                       ? "bg-zinc-900 text-zinc-200"
                       : "text-zinc-500 hover:bg-zinc-900 hover:text-zinc-300"
                   }`}
+                  title={
+                    sidebarCollapsed
+                      ? conversation.title
+                      : undefined
+                  }
                 >
-                  <span className="block truncate">
-                    {conversation.title}
-                  </span>
+                  {sidebarCollapsed ? (
+                    <span className="flex h-7 w-7 items-center justify-center rounded-md bg-zinc-800 text-xs font-medium text-zinc-300">
+                      {conversation.title
+                        .charAt(0)
+                        .toUpperCase()}
+                    </span>
+                  ) : (
+                    <span className="block truncate">
+                      {conversation.title}
+                    </span>
+                  )}
                 </button>
 
-                <button
-                  onClick={(event) => {
-                    event.stopPropagation();
-
-                    setOpenMenuId((current) =>
-                      current === conversation.id
-                        ? null
-                        : conversation.id,
-                    );
-                  }}
-                  className={`absolute right-1 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-md text-zinc-500 transition hover:bg-zinc-800 hover:text-zinc-200 ${
-                    openMenuId === conversation.id
-                      ? "opacity-100"
-                      : "opacity-0 group-hover:opacity-100"
-                  }`}
-                  aria-label="Conversation options"
-                >
-                  <span className="text-lg leading-none">
-                    ⋯
-                  </span>
-                </button>
-
-                {openMenuId === conversation.id && (
-                  <div className="absolute right-1 top-10 z-20 w-32 rounded-lg border border-zinc-800 bg-zinc-900 p-1 shadow-xl shadow-black/50">
+                {!sidebarCollapsed && (
+                  <>
                     <button
-                      onClick={() =>
-                        deleteConversation(
-                          conversation.id,
-                        )
-                      }
-                      className="w-full rounded-md px-3 py-2 text-left text-sm text-red-400 transition hover:bg-zinc-800 hover:text-red-300"
+                      onClick={(event) => {
+                        event.stopPropagation();
+
+                        setOpenMenuId((current) =>
+                          current === conversation.id
+                            ? null
+                            : conversation.id,
+                        );
+                      }}
+                      className={`absolute right-1 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-md text-zinc-500 transition hover:bg-zinc-800 hover:text-zinc-200 ${
+                        openMenuId === conversation.id
+                          ? "opacity-100"
+                          : "opacity-0 group-hover:opacity-100"
+                      }`}
+                      aria-label="Conversation options"
                     >
-                      Delete
+                      <span className="text-lg leading-none">
+                        ⋯
+                      </span>
                     </button>
-                  </div>
+
+                    {openMenuId === conversation.id && (
+                      <div className="absolute right-1 top-10 z-20 w-32 rounded-lg border border-zinc-800 bg-zinc-900 p-1 shadow-xl shadow-black/50">
+                        <button
+                          onClick={() =>
+                            deleteConversation(
+                              conversation.id,
+                            )
+                          }
+                          className="w-full rounded-md px-3 py-2 text-left text-sm text-red-400 transition hover:bg-zinc-800 hover:text-red-300"
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
             ))}
           </div>
         </div>
 
-        <div className="border-t border-zinc-800 p-3">
-          <button className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-zinc-500 transition hover:bg-zinc-900 hover:text-zinc-300">
+        {/* Sidebar Footer */}
+        <div
+          className={`border-t border-zinc-800 p-3 ${
+            sidebarCollapsed ? "px-2" : ""
+          }`}
+        >
+          <button
+            className={`flex w-full items-center rounded-lg text-base text-zinc-500 transition hover:bg-zinc-900 hover:text-zinc-300 ${
+              sidebarCollapsed
+                ? "h-10 justify-center"
+                : "gap-3 px-3 py-2.5"
+            }`}
+            title={
+              sidebarCollapsed
+                ? "Settings"
+                : undefined
+            }
+          >
             <span>⚙</span>
-            Settings
+
+            {!sidebarCollapsed && (
+              <span>Settings</span>
+            )}
           </button>
         </div>
       </aside>
 
-      {/* Main */}
+      {/* =========================================================
+          MAIN CONTENT
+      ========================================================= */}
       <section className="flex min-w-0 flex-1 flex-col">
-        <header className="flex h-16 shrink-0 items-center justify-between border-b border-zinc-800 px-4 md:px-6">
-          <div>
-            <h1 className="text-sm font-medium text-zinc-200">
-              {activeConversation?.title ?? "LISA"}
-            </h1>
 
-            <p className="text-xs text-zinc-600">
-              Network Operations AI Assistant
-            </p>
+        {/* Header */}
+        <header className="flex h-16 shrink-0 items-center justify-between border-b border-zinc-800 px-4 md:px-6">
+
+          <div className="flex items-center gap-3">
+
+            {/* Sidebar collapse / expand button */}
+            <button
+              type="button"
+              onClick={() =>
+                setSidebarCollapsed(
+                  (current) => !current,
+                )
+              }
+              className="hidden h-9 w-9 items-center justify-center rounded-lg text-zinc-500 transition hover:bg-zinc-900 hover:text-zinc-200 md:flex"
+              aria-label={
+                sidebarCollapsed
+                  ? "Expand sidebar"
+                  : "Collapse sidebar"
+              }
+              title={
+                sidebarCollapsed
+                  ? "Expand sidebar"
+                  : "Collapse sidebar"
+              }
+            >
+              <svg
+                width="20"
+                height="20"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                {sidebarCollapsed ? (
+                  <>
+                    <rect
+                      x="3"
+                      y="4"
+                      width="18"
+                      height="16"
+                      rx="2"
+                    />
+                    <path d="M9 4v16" />
+                    <path d="m13 9 3 3-3 3" />
+                  </>
+                ) : (
+                  <>
+                    <rect
+                      x="3"
+                      y="4"
+                      width="18"
+                      height="16"
+                      rx="2"
+                    />
+                    <path d="M9 4v16" />
+                    <path d="m16 9-3 3 3 3" />
+                  </>
+                )}
+              </svg>
+            </button>
+
+            <div>
+              <h1 className="text-base font-medium text-zinc-200">
+                {activeConversation?.title ??
+                  "LISA"}
+              </h1>
+
+              <p className="text-sm text-zinc-600">
+                Network Operations AI Assistant
+              </p>
+            </div>
           </div>
 
           <div className="flex items-center gap-2 rounded-full border border-zinc-800 px-3 py-1.5">
             <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
 
-            <span className="text-xs text-zinc-500">
+            <span className="text-sm text-zinc-500">
               Online
             </span>
           </div>
         </header>
 
-        {/* Messages */}
+        {/* =========================================================
+            MESSAGES
+        ========================================================= */}
         <div className="flex-1 overflow-y-auto">
           {!activeConversation ||
           activeConversation.messages.length === 0 ? (
@@ -589,7 +745,7 @@ export default function Home() {
                 How can I help?
               </h2>
 
-              <p className="mt-3 max-w-md text-center text-sm leading-6 text-zinc-500">
+              <p className="mt-3 max-w-md text-center text-base leading-7 text-zinc-500">
                 Ask LISA about network operations,
                 troubleshooting, configuration, or
                 technical issues.
@@ -608,7 +764,7 @@ export default function Home() {
                       setInput(prompt);
                       textareaRef.current?.focus();
                     }}
-                    className="rounded-xl border border-zinc-800 bg-zinc-950 p-4 text-left text-sm text-zinc-400 transition hover:border-zinc-700 hover:bg-zinc-900 hover:text-zinc-200"
+                    className="rounded-xl border border-zinc-800 bg-zinc-950 p-4 text-left text-base text-zinc-400 transition hover:border-zinc-700 hover:bg-zinc-900 hover:text-zinc-200"
                   >
                     {prompt}
                   </button>
@@ -629,12 +785,12 @@ export default function Home() {
                       }
                     >
                       {message.role === "user" ? (
-                        <div className="max-w-[80%] whitespace-pre-wrap rounded-2xl bg-zinc-800 px-4 py-3 text-sm leading-6 text-zinc-100">
+                        <div className="max-w-[80%] whitespace-pre-wrap rounded-2xl bg-zinc-800 px-4 py-3 text-base leading-7 text-zinc-100">
                           {message.content}
                         </div>
                       ) : (
-                        <div className="max-w-[90%] text-sm leading-7 text-zinc-200">
-                          <div className="prose prose-invert max-w-none prose-headings:text-zinc-100 prose-p:text-zinc-200 prose-strong:text-zinc-100 prose-code:text-zinc-200 prose-pre:border prose-pre:border-zinc-800 prose-pre:bg-zinc-950 prose-li:text-zinc-200 prose-a:text-zinc-100 prose-table:text-zinc-200">
+                        <div className="max-w-[90%] text-base leading-7 text-zinc-200">
+                          <div className="prose prose-invert max-w-none prose-base prose-headings:text-zinc-100 prose-p:text-zinc-200 prose-strong:text-zinc-100 prose-code:text-zinc-200 prose-pre:border prose-pre:border-zinc-800 prose-pre:bg-zinc-950 prose-li:text-zinc-200 prose-a:text-zinc-100 prose-table:text-zinc-200">
                             <ReactMarkdown
                               remarkPlugins={[remarkGfm]}
                             >
@@ -668,7 +824,7 @@ export default function Home() {
                                 : "✓"}
                             </span>
 
-                            <span className="text-sm font-medium text-zinc-300">
+                            <span className="text-base font-medium text-zinc-300">
                               {isThinking
                                 ? "Thinking..."
                                 : "Thought process"}
@@ -676,12 +832,12 @@ export default function Home() {
 
                             {!isThinking &&
                               reasoningDuration && (
-                                <span className="text-xs text-zinc-600">
+                                <span className="text-sm text-zinc-600">
                                   {reasoningDuration}s
                                 </span>
                               )}
 
-                            <span className="ml-auto text-xs text-zinc-600">
+                            <span className="ml-auto text-sm text-zinc-600">
                               {isReasoningOpen
                                 ? "⌃"
                                 : "⌄"}
@@ -690,7 +846,7 @@ export default function Home() {
 
                           {isReasoningOpen && (
                             <div className="border-t border-zinc-900 px-4 py-3">
-                              <div className="max-h-72 overflow-y-auto whitespace-pre-wrap text-xs leading-6 text-zinc-500">
+                              <div className="max-h-72 overflow-y-auto whitespace-pre-wrap text-sm leading-6 text-zinc-500">
                                 {reasoning ||
                                   "LISA is working through the problem..."}
                               </div>
@@ -709,7 +865,7 @@ export default function Home() {
                   !isThinking &&
                   !reasoning && (
                     <div className="flex justify-start">
-                      <div className="text-sm text-zinc-600">
+                      <div className="text-base text-zinc-600">
                         LISA is responding...
                       </div>
                     </div>
@@ -721,7 +877,9 @@ export default function Home() {
           )}
         </div>
 
-        {/* Composer */}
+        {/* =========================================================
+            COMPOSER
+        ========================================================= */}
         <div className="shrink-0 px-4 pb-5 md:px-6">
           <div className="mx-auto max-w-3xl">
             <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-2 shadow-2xl shadow-black/50 transition focus-within:border-zinc-700">
@@ -735,7 +893,7 @@ export default function Home() {
                 placeholder="Message LISA..."
                 rows={1}
                 disabled={isLoading}
-                className="max-h-40 min-h-11 w-full resize-none bg-transparent px-3 py-2.5 text-sm text-zinc-100 outline-none placeholder:text-zinc-600"
+                className="max-h-40 min-h-11 w-full resize-none bg-transparent px-3 py-2.5 text-base text-zinc-100 outline-none placeholder:text-zinc-600"
               />
 
               <div className="mt-2 flex items-center justify-between border-t border-zinc-900 px-1 pt-2">
@@ -748,7 +906,7 @@ export default function Home() {
                   }
                   disabled={isLoading}
                   aria-pressed={enableThinking}
-                  className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-medium transition ${
+                  className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium transition ${
                     enableThinking
                       ? "border-zinc-600 bg-zinc-800 text-white"
                       : "border-zinc-800 bg-zinc-950 text-zinc-400 hover:border-zinc-700 hover:bg-zinc-900 hover:text-zinc-200"
@@ -786,7 +944,7 @@ export default function Home() {
               </div>
             </div>
 
-            <p className="mt-2 text-center text-xs text-zinc-700">
+            <p className="mt-2 text-sm text-zinc-700">
               LISA can make mistakes. Verify important
               network operations.
             </p>
