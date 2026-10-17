@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 48" role="img" aria-labelledby="title">
+  <title id="title">LISA</title>
+  <rect width="48" height="48" rx="10" fill="#34d399"/>
+  <path d="M14 12h7v18h13v6H14z" fill="#09090b"/>
+  <text x="60" y="33" fill="#f4f4f5" font-family="Arial, sans-serif" font-size="28" font-weight="700">LISA</text>
+</svg>
