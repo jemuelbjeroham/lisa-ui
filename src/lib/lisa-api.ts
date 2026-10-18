@@ -1,38 +1,29 @@
-import { apiUrl } from "@/lib/api-client";
 
-export type LisaChatRequest = {
-  conversation_id: string;
+import { apiRequest } from "./api-client";
+
+export interface ChatRequest {
   message: string;
-  enable_thinking: boolean;
-};
+  conversation_id?: string;
+}
 
-export type LisaStreamEvent = {
-  type: "reasoning" | "content";
-  content: string;
-};
+export interface ChatResponse {
+  conversation_id: string;
+  response: string;
+}
 
-export async function streamLisaChat(
-  payload: LisaChatRequest,
-  signal?: AbortSignal,
-): Promise<Response> {
-  const response = await fetch(apiUrl("/api/v1/chat/stream"), {
+export interface ConversationListResponse {
+  conversations: string[];
+}
+
+export async function listConversations(): Promise<ConversationListResponse> {
+  return apiRequest<ConversationListResponse>("/api/v1/conversations");
+}
+
+export async function sendMessage(
+  request: ChatRequest,
+): Promise<ChatResponse> {
+  return apiRequest<ChatResponse>("/api/v1/chat", {
     method: "POST",
-    cache: "no-store",
-    headers: {
-      "Content-Type": "application/json",
-      Accept: "application/x-ndjson",
-    },
-    body: JSON.stringify(payload),
-    signal,
+    body: JSON.stringify(request),
   });
-
-  if (!response.ok) {
-    throw new Error(`Request failed with status ${response.status}`);
-  }
-
-  if (!response.body) {
-    throw new Error("Response body is unavailable");
-  }
-
-  return response;
 }

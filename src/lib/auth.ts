@@ -1,16 +1,37 @@
-export type AuthUser = {
+
+import { apiRequest } from "./api-client";
+
+export interface CurrentUser {
   id: string;
+  display_name: string | null;
   email: string;
-  name?: string;
-};
+  is_admin: boolean;
+}
 
-export const AUTH_PROVIDER_CONFIGURED = Boolean(
-  process.env.NEXT_PUBLIC_AUTH_URL && process.env.NEXT_PUBLIC_AUTH_KEY,
-);
+interface LoginResponse {
+  message: string;
+}
 
-export function getAuthConfiguration() {
-  return {
-    configured: AUTH_PROVIDER_CONFIGURED,
-    url: process.env.NEXT_PUBLIC_AUTH_URL ?? null,
-  };
+interface LogoutResponse {
+  message: string;
+}
+
+export async function login(
+  email: string,
+  password: string,
+): Promise<void> {
+  await apiRequest<LoginResponse>("/api/v1/auth/login", {
+    method: "POST",
+    body: JSON.stringify({ email, password }),
+  });
+}
+
+export async function logout(): Promise<void> {
+  await apiRequest<LogoutResponse>("/api/v1/auth/logout", {
+    method: "POST",
+  });
+}
+
+export async function getCurrentUser(): Promise<CurrentUser> {
+  return apiRequest<CurrentUser>("/api/v1/auth/me");
 }
