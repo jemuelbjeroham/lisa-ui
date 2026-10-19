@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import { AppProviders } from "@/providers/AppProviders";
+import AppProviders from "@/providers/AppProviders";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -14,8 +14,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "LISA | Network Operations Assistant",
-  description: "A focused AI assistant for network operations and troubleshooting.",
+  title: "LISA",
+  description: "Level1 Intelligent System and Assistant",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

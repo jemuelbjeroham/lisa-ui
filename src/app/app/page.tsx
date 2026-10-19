@@ -1,6 +1,12 @@
-
-
 "use client";
+
+import { useAuth } from "@/providers/AppProviders";
+import {
+  deleteConversation,
+  getConversation,
+  getConversations,
+  renameConversation,
+} from "@/lib/conversations";
 
 import { useEffect, useRef, useState } from "react";
 
@@ -30,7 +36,7 @@ function id() {
 
 }
 
-const API_BASE_URL = (process.env.NEXT_PUBLIC_LISA_API_URL ?? "http://127.0.0.1:8008").replace(/\/$/, "");
+const API_BASE_URL = (process.env.NEXT_PUBLIC_LISA_API_URL ?? "http://localhost:8008").replace(/\/$/, "");
 
 function isUuid(value: string) {
 
@@ -182,7 +188,10 @@ export default function LisaAppPage() {
     const newId = id();
     return [{ id: newId, title: "New conversation", messages: [] }];
   });
+
   const [activeId, setActiveId] = useState(() => conversations[0].id);
+  const [conversationLoading, setConversationLoading] = useState(true);
+  const [urlSyncReady, setUrlSyncReady] = useState(false);
 
   const [input, setInput] = useState("");
 
@@ -218,14 +227,120 @@ export default function LisaAppPage() {
 
   const busy = status === "thinking" || status === "generating";
 
+  const { user, signOut } = useAuth();
+
   useEffect(() => {
+    let cancelled = false;
 
+    async function loadSavedConversations() {
+      setConversationLoading(true);
+      try {
+        const response = await getConversations();
+        const requestedId = new URLSearchParams(
+          window.location.search,
+        ).get("conversation");
+
+        const saved = await Promise.all(
+          response.map(async ({ id: conversationId, title }) => {
+            try {
+              const detail = await getConversation(conversationId);
+
+              const messages: Message[] = detail.messages.map((message) => ({
+                id: id(),
+                role: message.role,
+                content: message.content,
+              }));
+
+              return {
+                id: conversationId,
+                title: title || detail.title || "Conversation",
+                messages,
+              } satisfies Conversation;
+            } catch (error) {
+              console.warn(
+                `Unable to load conversation ${conversationId}:`,
+                error,
+              );
+              return null;
+            }
+          }),
+        );
+
+        if (cancelled) return;
+        const loaded = saved.filter((item): item is Conversation => item !== null);
+        if (loaded.length > 0) {
+          setConversations(loaded);
+          const requestedConversation = requestedId && loaded.some((item) => item.id === requestedId)
+            ? requestedId
+            : loaded[0].id;
+          setActiveId(requestedConversation);
+        } else {
+          const newId = id();
+          setConversations([{ id: newId, title: "New conversation", messages: [] }]);
+          setActiveId(newId);
+        }
+      } catch (error) {
+        console.error("Unable to load L.I.S.A. conversations:", error);
+        // Keep the new-conversation experience available if the API is unreachable.
+      } finally {
+        if (!cancelled) {
+          setConversationLoading(false);
+          setUrlSyncReady(true);
+        }
+      }
+    }
+
+    void loadSavedConversations();
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    if (!urlSyncReady || !activeId) return;
+    const url = new URL(window.location.href);
+    url.searchParams.set("conversation", activeId);
+    window.history.replaceState({}, "", url);
+  }, [activeId, urlSyncReady]);
+
+  useEffect(() => {
+    function handlePopState() {
+      const requestedId = new URLSearchParams(window.location.search).get("conversation");
+      if (!requestedId || !isUuid(requestedId)) return;
+      const existing = conversations.find((conversation) => conversation.id === requestedId);
+      if (existing) {
+        abortRef.current?.abort();
+        abortRef.current = null;
+        setActiveId(requestedId);
+        setStatus("idle");
+        return;
+      }
+      void getConversation(requestedId).then((detail) => {
+        const messages: Message[] = detail.messages.map((message) => ({
+          id: id(), role: message.role, content: message.content,
+        }));
+        const firstUserMessage = messages.find((message) => message.role === "user")?.content;
+        const conversation: Conversation = {
+          id: detail.id,
+          title: firstUserMessage
+            ? firstUserMessage.length > 40 ? `${firstUserMessage.slice(0, 40)}…` : firstUserMessage
+            : "Conversation",
+          messages,
+        };
+        setConversations((all) => all.some((item) => item.id === conversation.id) ? all : [conversation, ...all]);
+        setActiveId(conversation.id);
+        setStatus("idle");
+      }).catch((error) => {
+        console.error("Unable to open conversation from URL:", error);
+      });
+    }
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, [conversations]);
+
+  useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
-
   }, [active?.messages, status]);
 
   useEffect(() => {
-
     function onKeyDown(event: KeyboardEvent) {
 
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
@@ -277,6 +392,9 @@ export default function LisaAppPage() {
     ]);
 
     setActiveId(newId);
+    const url = new URL(window.location.href);
+    url.searchParams.set("conversation", newId);
+    window.history.pushState({}, "", url);
 
     setInput("");
 
@@ -299,6 +417,9 @@ export default function LisaAppPage() {
     abortRef.current = null;
 
     setActiveId(conversationId);
+    const url = new URL(window.location.href);
+    url.searchParams.set("conversation", conversationId);
+    window.history.pushState({}, "", url);
 
     setStatus("idle");
 
@@ -632,42 +753,35 @@ export default function LisaAppPage() {
 
   }
 
-  function deleteChat(conversationId: string) {
+  async function deleteChat(conversationId: string) {
+
+    try {
+      await deleteConversation(conversationId);
+    } catch (error) {
+      console.error("Unable to delete conversation:", error);
+      window.alert("Could not delete this conversation. Please try again.");
+      return;
+    }
 
     if (activeId === conversationId) {
-
       abortRef.current?.abort();
-
       abortRef.current = null;
-
     }
 
     const remaining = conversations.filter((c) => c.id !== conversationId);
-
     setConversations(remaining);
-
     setMenu(null);
 
     if (activeId === conversationId) {
-
       if (remaining.length) {
-
         setActiveId(remaining[0].id);
-
       } else {
-
         const newId = id();
-
         setConversations([{ id: newId, title: "New conversation", messages: [] }]);
-
         setActiveId(newId);
-
       }
-
       setStatus("idle");
-
     }
-
   }
 
   function beginRename(conversation: Conversation) {
@@ -680,58 +794,43 @@ export default function LisaAppPage() {
 
   }
 
-  function saveRename(conversationId: string) {
+  async function saveRename(conversationId: string) {
 
     const title = renameValue.trim();
 
-    if (title) {
-
-      patchConversation(conversationId, (conversation) => ({
-
-        ...conversation,
-
-        title,
-
-      }));
-
+    if (!title) {
+      setRenameId(null);
+      setRenameValue("");
+      return;
     }
 
-    setRenameId(null);
-
-    setRenameValue("");
-
+    try {
+      await renameConversation(conversationId, title);
+      patchConversation(conversationId, (conversation) => ({
+        ...conversation,
+        title,
+      }));
+    } catch (error) {
+      console.error("Unable to rename conversation:", error);
+      window.alert("Could not rename this conversation. Please try again.");
+    } finally {
+      setRenameId(null);
+      setRenameValue("");
+    }
   }
 
   async function shareChat(conversation: Conversation) {
-
-    const transcript = [
-
-      conversation.title,
-
-      "",
-
-      ...conversation.messages.map(
-
-        (message) => `${message.role === "user" ? "You" : "L.I.S.A."}: ${message.content}`,
-
-      ),
-
-    ].join("\n");
+    const url = new URL(window.location.href);
+    url.searchParams.set("conversation", conversation.id);
+    const link = url.toString();
 
     try {
-
-      await navigator.clipboard.writeText(transcript);
-
-      window.alert("Conversation copied to your clipboard.");
-
+      await navigator.clipboard.writeText(link);
+      window.alert("Conversation link copied to your clipboard.");
     } catch {
-
-      window.prompt("Copy this conversation:", transcript);
-
+      window.prompt("Copy this conversation link:", link);
     }
-
     setMenu(null);
-
   }
 
   function handleSubmitKey(event: React.KeyboardEvent<HTMLTextAreaElement>) {
@@ -776,7 +875,7 @@ export default function LisaAppPage() {
 
         <button onClick={() => shareChat(conversation)}>
 
-          <Icon name="share" size={16} /> Copy / share
+          <Icon name="share" size={16} /> Copy conversation link
 
         </button>
 
@@ -1065,9 +1164,7 @@ export default function LisaAppPage() {
             ))}
 
             {filtered.length === 0 && !sidebarCollapsed && (
-
-              <p className="empty-search">No conversations found.</p>
-
+              <p className="empty-search">{conversationLoading ? "Loading conversations…" : "No conversations found."}</p>
             )}
 
           </div>
@@ -1098,7 +1195,7 @@ export default function LisaAppPage() {
 
           >
 
-            <span className="avatar">J</span>
+            <span className="avatar">{(user?.display_name || user?.email || "U").charAt(0).toUpperCase()}</span>
 
             {!sidebarCollapsed && (
 
@@ -1106,9 +1203,9 @@ export default function LisaAppPage() {
 
                 <span className="profile-copy">
 
-                  <strong>Jemuel</strong>
+                  <strong>{user?.display_name || user?.email || "User"}</strong>
 
-                  <small>Personal workspace</small>
+                  <small>{user?.email || "Personal workspace"}</small>
 
                 </span>
 
@@ -1126,9 +1223,9 @@ export default function LisaAppPage() {
 
               <div className="account-identity">
 
-                <span className="avatar">J</span>
+                <span className="avatar">{(user?.display_name || user?.email || "U").charAt(0).toUpperCase()}</span>
 
-                <div><strong>Jemuel</strong><small>Personal workspace</small></div>
+                <div><strong>{user?.display_name || user?.email || "User"}</strong><small>{user?.email || "Personal workspace"}</small></div>
 
               </div>
 
@@ -1146,7 +1243,29 @@ export default function LisaAppPage() {
 
               </button>
 
-              <button onClick={() => window.alert("Authentication will be connected later.")}>
+              <button
+
+                    onClick={async () => {
+
+                        setProfileOpen(false);
+
+                        try {
+
+                        await signOut();
+
+                        window.location.href = "/sign-in";
+
+                        } catch (error) {
+
+                        console.error("Failed to sign out:", error);
+
+                        window.alert("Unable to sign out. Please try again.");
+
+                        }
+
+                    }}
+
+                >
 
                 <Icon name="logout" size={17} /> Sign out
 
@@ -1238,7 +1357,7 @@ export default function LisaAppPage() {
 
                   <button onClick={() => shareChat(active)}>
 
-                    <Icon name="share" size={17} /> Share / copy conversation
+                    <Icon name="share" size={17} /> Copy conversation link
 
                   </button>
 
@@ -1324,7 +1443,7 @@ export default function LisaAppPage() {
 
                   <div><strong>Account</strong><p>Current profile and workspace.</p></div>
 
-                  <span className="settings-value">Jemuel</span>
+                  <span className="settings-value">{user?.display_name || user?.email || "User"}</span>
 
                 </div>
 
@@ -1425,10 +1544,15 @@ export default function LisaAppPage() {
                 <div className="messages">
 
                   {active.messages.map((message) => {
+
                   // The separate status bubble represents an empty assistant response while streaming.
+
                   if (busy && message.role === "assistant" && !message.content) return null;
+
                   return (
+
                     <article
+
                       key={message.id}
 
                       className={`message-row ${message.role === "user" ? "user-message-row" : "assistant-message-row"}`}
@@ -1469,10 +1593,12 @@ export default function LisaAppPage() {
 
                       </div>
 
-                      {message.role === "user" && <span className="avatar message-avatar">J</span>}
+                      {message.role === "user" && <span className="avatar message-avatar">{(user?.display_name || user?.email || "U").charAt(0).toUpperCase()}</span>}
 
                     </article>
+
                   );
+
                 })}
 
                 {busy && active.messages.some((message) => message.role === "assistant" && !message.content) && (
@@ -1645,29 +1771,29 @@ export default function LisaAppPage() {
 
           color-scheme: dark;
 
-          \--bg: #030405;
+          --bg: #030405;
 
-          \--sidebar: #08090b;
+          --sidebar: #08090b;
 
-          \--panel: #0c0f13;
+          --panel: #0c0f13;
 
-          \--border: rgba(255,255,255,.09);
+          --border: rgba(255,255,255,.09);
 
-          \--text: #f3f5f8;
+          --text: #f3f5f8;
 
-          \--muted: #929aa7;
+          --muted: #929aa7;
 
-          \--blue: #1687ff;
+          --blue: #1687ff;
 
-          \--cyan: #24e4f2;
+          --cyan: #24e4f2;
 
-          \--purple: #a855f7;
+          --purple: #a855f7;
 
-          \--red: #ff424f;
+          --red: #ff424f;
 
         }
 
-        \* { box-sizing: border-box; }
+        * { box-sizing: border-box; }
 
         html, body { margin: 0; min-height: 100%; background: var(--bg); }
 
@@ -1693,7 +1819,7 @@ export default function LisaAppPage() {
 
         .lisa-shell {
 
-          \--glow-a: var(--blue); --glow-b: var(--cyan);
+          --glow-a: var(--blue); --glow-b: var(--cyan);
 
           position: relative; isolation: isolate; display: flex; width: 100%;
 
@@ -2247,7 +2373,7 @@ export default function LisaAppPage() {
 
         @media (prefers-reduced-motion: reduce) {
 
-          \*,\*::before,\*::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; scroll-behavior: auto !important; transition-duration: .01ms !important; }
+          *,*::before,*::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; scroll-behavior: auto !important; transition-duration: .01ms !important; }
 
         }
 

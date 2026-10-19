@@ -1,6 +1,38 @@
+
 import Link from "next/link";
-import { SignUpForm } from "@/components/auth/SignUpForm";
 
 export default function SignUpPage() {
-  return <main className="grid min-h-screen place-items-center bg-zinc-950 px-6 text-zinc-100"><section className="w-full max-w-md"><Link href="/" className="text-sm font-semibold">LISA</Link><h1 className="mb-2 mt-10 text-3xl font-semibold">Create your account</h1><p className="mb-8 text-sm text-zinc-400">Set up access to your LISA workspace.</p><SignUpForm /></section></main>;
+  return (
+    <main className="flex min-h-screen items-center justify-center bg-[#0d1117] px-6 text-[#e6edf3]">
+      <section className="w-full max-w-md rounded-lg border border-[#30363d] bg-[#161b22] p-8">
+        <Link
+          href="/sign-in"
+          className="text-sm font-semibold text-[#58a6ff] hover:underline"
+        >
+          L.I.S.A.
+        </Link>
+
+        <h1 className="mb-3 mt-8 text-2xl font-semibold">
+          Account access
+        </h1>
+
+        <p className="text-sm leading-6 text-[#9198a1]">
+          L.I.S.A. accounts are managed by your administrator. Public
+          account registration is not available.
+        </p>
+
+        <p className="mt-4 text-sm leading-6 text-[#9198a1]">
+          If you need access, please contact your administrator to request
+          an account.
+        </p>
+
+        <Link
+          href="/sign-in"
+          className="mt-7 block w-full rounded-md border border-[#1f883d] bg-[#1f883d] px-4 py-2 text-center text-sm font-semibold text-white hover:bg-[#1a7f37]"
+        >
+          Back to sign in
+        </Link>
+      </section>
+    </main>
+  );
 }

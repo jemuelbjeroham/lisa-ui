@@ -35,3 +35,21 @@ export async function logout(): Promise<void> {
 export async function getCurrentUser(): Promise<CurrentUser> {
   return apiRequest<CurrentUser>("/api/v1/auth/me");
 }
+
+
+interface ChangePasswordResponse {
+  message: string;
+}
+
+export async function changePassword(
+  currentPassword: string,
+  newPassword: string,
+): Promise<void> {
+  await apiRequest<ChangePasswordResponse>("/api/v1/auth/change-password", {
+    method: "POST",
+    body: JSON.stringify({
+      current_password: currentPassword,
+      new_password: newPassword,
+    }),
+  });
+}

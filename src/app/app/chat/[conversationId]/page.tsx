@@ -1,10 +1,12 @@
-import ChatWorkspace from "@/components/chat/ChatWorkspace";
 
-type Props = {
+import { redirect } from "next/navigation";
+
+export default async function ConversationPage({
+  params,
+}: {
   params: Promise<{ conversationId: string }>;
-};
-
-export default async function ConversationPage({ params }: Props) {
+}) {
   const { conversationId } = await params;
-  return <ChatWorkspace initialConversationId={conversationId} />;
+
+  redirect(`/app?conversation=${encodeURIComponent(conversationId)}`);
 }
