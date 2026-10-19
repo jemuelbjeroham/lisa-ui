@@ -205,6 +205,8 @@ export default function LisaAppPage() {
 
   const [profileOpen, setProfileOpen] = useState(false);
 
+  const [adminSettingsOpen, setAdminSettingsOpen] = useState(false);
+
   const [menu, setMenu] = useState<Menu>(null);
 
   const [renameId, setRenameId] = useState<string | null>(null);
@@ -216,6 +218,12 @@ export default function LisaAppPage() {
   const [search, setSearch] = useState("");
 
   const [activePanel, setActivePanel] = useState<"settings" | "preferences" | null>(null);
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [passwordSubmitting, setPasswordSubmitting] = useState(false);
+  const [passwordError, setPasswordError] = useState("");
+  const [passwordSuccess, setPasswordSuccess] = useState("");
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -356,6 +364,8 @@ export default function LisaAppPage() {
         setMenu(null);
 
         setProfileOpen(false);
+
+        setAdminSettingsOpen(false);
 
         setMobileSidebarOpen(false);
 
@@ -833,6 +843,64 @@ export default function LisaAppPage() {
     setMenu(null);
   }
 
+  async function handleChangePassword(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setPasswordError("");
+    setPasswordSuccess("");
+
+    if (newPassword.length < 12) {
+      setPasswordError("Your new password must contain at least 12 characters.");
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      setPasswordError("The new password and confirmation do not match.");
+      return;
+    }
+
+    if (currentPassword === newPassword) {
+      setPasswordError("Your new password must be different from your current password.");
+      return;
+    }
+
+    setPasswordSubmitting(true);
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/v1/auth/change-password`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          current_password: currentPassword,
+          new_password: newPassword,
+        }),
+      });
+
+      if (!response.ok) {
+        let message = "Unable to change your password. Please try again.";
+        try {
+          const body = await response.json() as { detail?: string };
+          if (typeof body.detail === "string") message = body.detail;
+        } catch {
+          // Keep the default message if the API response is not JSON.
+        }
+        throw new Error(message);
+      }
+
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+      setPasswordSuccess("Password changed successfully. Please sign in again with your new password.");
+      window.setTimeout(() => {
+        window.location.href = "/sign-in";
+      }, 1800);
+    } catch (error) {
+      setPasswordError(error instanceof Error ? error.message : "Unable to change your password. Please try again.");
+    } finally {
+      setPasswordSubmitting(false);
+    }
+  }
+
   function handleSubmitKey(event: React.KeyboardEvent<HTMLTextAreaElement>) {
 
     if (event.key === "Enter" && !event.shiftKey) {
@@ -1231,13 +1299,42 @@ export default function LisaAppPage() {
 
               <div className="menu-divider" />
 
-              <button onClick={() => { setActivePanel("settings"); setProfileOpen(false); }}>
+              {user?.is_admin && (
+                <>
+                  <button
+                    aria-expanded={adminSettingsOpen}
+                    onClick={() => setAdminSettingsOpen((value) => !value)}
+                  >
+                    <Icon name="settings" size={17} /> Settings
+                    <span className="admin-settings-chevron">{adminSettingsOpen ? "▾" : "▸"}</span>
+                  </button>
 
-                <Icon name="settings" size={17} /> Settings
+                  {adminSettingsOpen && (
+                    <div className="admin-settings-submenu">
+                      <button
+                        onClick={() => {
+                          setProfileOpen(false);
+                          setAdminSettingsOpen(false);
+                          window.location.href = "/app/admin/users";
+                        }}
+                      >
+                        <Icon name="settings-gear" size={16} /> Manage Users
+                      </button>
+                      <button
+                        onClick={() => {
+                          setProfileOpen(false);
+                          setAdminSettingsOpen(false);
+                          window.alert("LISA Config will be available in a future update.");
+                        }}
+                      >
+                        <Icon name="sliders" size={16} /> LISA Config
+                      </button>
+                    </div>
+                  )}
+                </>
+              )}
 
-              </button>
-
-              <button onClick={() => { setActivePanel("preferences"); setProfileOpen(false); }}>
+              <button onClick={() => { setActivePanel("preferences"); setProfileOpen(false); setAdminSettingsOpen(false); }}>
 
                 <Icon name="sliders" size={17} /> Preferences
 
@@ -1488,6 +1585,92 @@ export default function LisaAppPage() {
                 </div>
 
               </div>
+
+              {activePanel === "preferences" && (
+                <section className="settings-card mt-5 p-5">
+                  <div className="mb-5">
+                    <h3 className="text-base font-semibold text-[#f3f5f8]">Change password</h3>
+                    <p className="mt-2 text-xs leading-6 text-[#929baa]">
+                      Update the password for your L.I.S.A. account. You will be asked to sign in again after the change.
+                    </p>
+                  </div>
+
+                  {passwordError && (
+                    <div role="alert" className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
+                      {passwordError}
+                    </div>
+                  )}
+
+                  {passwordSuccess && (
+                    <div role="status" className="mb-4 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-300">
+                      {passwordSuccess}
+                    </div>
+                  )}
+
+                  <form onSubmit={handleChangePassword} className="space-y-4">
+                    <div>
+                      <label htmlFor="current-password" className="mb-2 block text-sm font-medium text-[#dce3ed]">Current password</label>
+                      <input
+                        id="current-password"
+                        name="current-password"
+                        type="password"
+                        autoComplete="current-password"
+                        required
+                        maxLength={1024}
+                        value={currentPassword}
+                        onChange={(event) => setCurrentPassword(event.target.value)}
+                        disabled={passwordSubmitting || Boolean(passwordSuccess)}
+                        className="w-full rounded-lg border border-white/10 bg-[#080a0d] px-3 py-2.5 text-sm text-[#f3f5f8] outline-none transition focus:border-cyan-400/60 focus:ring-2 focus:ring-cyan-400/10 disabled:opacity-60"
+                      />
+                    </div>
+
+                    <div>
+                      <label htmlFor="new-password" className="mb-2 block text-sm font-medium text-[#dce3ed]">New password</label>
+                      <input
+                        id="new-password"
+                        name="new-password"
+                        type="password"
+                        autoComplete="new-password"
+                        required
+                        minLength={12}
+                        maxLength={1024}
+                        value={newPassword}
+                        onChange={(event) => setNewPassword(event.target.value)}
+                        disabled={passwordSubmitting || Boolean(passwordSuccess)}
+                        className="w-full rounded-lg border border-white/10 bg-[#080a0d] px-3 py-2.5 text-sm text-[#f3f5f8] outline-none transition focus:border-cyan-400/60 focus:ring-2 focus:ring-cyan-400/10 disabled:opacity-60"
+                      />
+                      <p className="mt-2 text-xs text-[#7f8998]">Use at least 12 characters.</p>
+                    </div>
+
+                    <div>
+                      <label htmlFor="confirm-password" className="mb-2 block text-sm font-medium text-[#dce3ed]">Confirm new password</label>
+                      <input
+                        id="confirm-password"
+                        name="confirm-password"
+                        type="password"
+                        autoComplete="new-password"
+                        required
+                        minLength={12}
+                        maxLength={1024}
+                        value={confirmPassword}
+                        onChange={(event) => setConfirmPassword(event.target.value)}
+                        disabled={passwordSubmitting || Boolean(passwordSuccess)}
+                        className="w-full rounded-lg border border-white/10 bg-[#080a0d] px-3 py-2.5 text-sm text-[#f3f5f8] outline-none transition focus:border-cyan-400/60 focus:ring-2 focus:ring-cyan-400/10 disabled:opacity-60"
+                      />
+                    </div>
+
+                    <div className="flex justify-end pt-2">
+                      <button
+                        type="submit"
+                        disabled={passwordSubmitting || Boolean(passwordSuccess) || !currentPassword || !newPassword || !confirmPassword}
+                        className="rounded-lg border border-cyan-400/30 bg-cyan-400/10 px-4 py-2.5 text-sm font-semibold text-cyan-200 transition hover:bg-cyan-400/15 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {passwordSubmitting ? "Changing password…" : "Change password"}
+                      </button>
+                    </div>
+                  </form>
+                </section>
+              )}
 
             </div>
 
@@ -2038,6 +2221,9 @@ export default function LisaAppPage() {
         .account-identity strong { font-size: 13px; }
 
         .account-identity small { color: var(--muted); font-size: 11px; }
+        .admin-settings-chevron { margin-left: auto; color: #8b95a4; font-size: 15px; }
+        .admin-settings-submenu { margin: 2px 0 6px 12px; padding-left: 7px; border-left: 1px solid rgba(36,228,242,.2); }
+        .admin-settings-submenu button { min-height: 35px; font-size: 12px; }
 
         .main-column { position: relative; display: flex; min-width: 0; flex: 1; flex-direction: column; }
 

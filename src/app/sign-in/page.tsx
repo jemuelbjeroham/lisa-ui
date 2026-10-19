@@ -42,8 +42,6 @@ export default function SignInPage() {
     try {
       await login(email.trim(), password);
       await refreshUser();
-
-      // Confirm that the new session is recognized before navigating.
       router.replace("/app");
     } catch (err) {
       setError(
@@ -67,6 +65,7 @@ export default function SignInPage() {
           <h1 className="text-2xl font-normal tracking-tight">
             Sign in to L.I.S.A.
           </h1>
+
           <p className="mt-2 text-sm text-gray-600 dark:text-[#9198a1]">
             Network Operations Assistant
           </p>
@@ -92,6 +91,7 @@ export default function SignInPage() {
             >
               Email address
             </label>
+
             <input
               id="email"
               name="email"
@@ -107,15 +107,13 @@ export default function SignInPage() {
             />
           </div>
 
-          <div className="mb-5">
-            <div className="mb-2 flex items-center justify-between gap-3">
-              <label
-                htmlFor="password"
-                className="block text-sm font-medium"
-              >
-                Password
-              </label>
-            </div>
+          <div className="mb-4">
+            <label
+              htmlFor="password"
+              className="mb-2 block text-sm font-medium"
+            >
+              Password
+            </label>
 
             <div className="relative">
               <input
@@ -134,7 +132,8 @@ export default function SignInPage() {
               <button
                 type="button"
                 onClick={() => setShowPassword((visible) => !visible)}
-                className="absolute inset-y-0 right-0 px-3 text-xs font-medium text-[#0969da] hover:underline dark:text-[#58a6ff]"
+                disabled={isSubmitting}
+                className="absolute inset-y-0 right-0 px-3 text-xs font-medium text-[#0969da] hover:underline disabled:opacity-60 dark:text-[#58a6ff]"
                 aria-label={showPassword ? "Hide password" : "Show password"}
               >
                 {showPassword ? "Hide" : "Show"}
@@ -156,7 +155,7 @@ export default function SignInPage() {
         </p>
 
         <p className="mt-8 text-center text-xs text-gray-500 dark:text-[#6e7681]">
-          L.I.S.A. · Network Operations Assistant
+          L.I.S.A. · Intelligent System and Assistant.
         </p>
       </div>
     </main>
