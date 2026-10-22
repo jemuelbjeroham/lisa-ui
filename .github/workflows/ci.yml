@@ -1,0 +1,16 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    uses: jemuelbjeroham/lisa-cicd/.github/workflows/node-ci.yml@2528f00b281f6d58f3a9bf9b0888540ec09ea56f
+    with:
+      node-version: "22"
