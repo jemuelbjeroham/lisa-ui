@@ -4,10 +4,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
-
-const API_BASE_URL = (
-  process.env.NEXT_PUBLIC_LISA_API_URL ?? "http://localhost:8008"
-).replace(/\/$/, "");
+import { getApiBaseUrl } from "@/lib/api-url";
 
 type Message = {
   type: "success" | "error";
@@ -87,20 +84,18 @@ export default function ChangePasswordPage() {
     setIsSubmitting(true);
 
     try {
-      const response = await fetch(
-        `${API_BASE_URL}/api/v1/auth/change-password`,
-        {
-          method: "POST",
-          credentials: "include",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            current_password: currentPassword,
-            new_password: newPassword,
-          }),
-        }
-      );
+      const apiBaseUrl = await getApiBaseUrl();
+      const response = await fetch(`${apiBaseUrl}/api/v1/auth/change-password`, {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          current_password: currentPassword,
+          new_password: newPassword,
+        }),
+      });
 
       const data = await response.json().catch(() => null);
 

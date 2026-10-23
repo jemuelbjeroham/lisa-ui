@@ -11,6 +11,6 @@ permissions:
 
 jobs:
   ci:
-    uses: jemuelbjeroham/lisa-cicd/.github/workflows/node-ci.yml@2528f00b281f6d58f3a9bf9b0888540ec09ea56f
+    uses: jemuelbjeroham/lisa-cicd/.github/workflows/node-ci.yml@ad6c1eb738a293987141ad476a6bbfc1fa1b7b06
     with:
       node-version: "22"

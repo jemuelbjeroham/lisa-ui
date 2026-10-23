@@ -10,7 +10,9 @@ cp .env.example .env.local
 npm run dev
 ```
 
-Set `NEXT_PUBLIC_LISA_API_URL` in `.env.local` to the backend origin. The chat page streams from `/api/v1/chat/stream`. Conversation history is currently stored in browser local storage.
+Set `LISA_API_URL` in `.env.local` to the backend origin. The chat page streams from `/api/v1/chat/stream`. Conversation history is currently stored in browser local storage. For compatibility with existing local setups, `NEXT_PUBLIC_LISA_API_URL` remains a fallback when `LISA_API_URL` is unset.
+
+The browser obtains the API origin from the frontend's `/api/runtime-config` endpoint at runtime. In Docker deployments, set `LISA_API_URL` to an address reachable by each user's browser (for example, the host-published API address); a Docker service name such as `lisa-api` is only resolvable inside the Docker network.
 
 ## Routes
 

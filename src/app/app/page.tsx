@@ -1,6 +1,7 @@
 "use client";
 
 import { useAuth } from "@/providers/AppProviders";
+import { getApiBaseUrl } from "@/lib/api-url";
 import {
   deleteConversation,
   getConversation,
@@ -35,8 +36,6 @@ function id() {
   return crypto.randomUUID();
 
 }
-
-const API_BASE_URL = (process.env.NEXT_PUBLIC_LISA_API_URL ?? "http://localhost:8008").replace(/\/$/, "");
 
 function isUuid(value: string) {
 
@@ -559,7 +558,8 @@ export default function LisaAppPage() {
 
     try {
 
-      const response = await fetch(`${API_BASE_URL}/api/v1/chat/stream`, {
+      const apiBaseUrl = await getApiBaseUrl();
+      const response = await fetch(`${apiBaseUrl}/api/v1/chat/stream`, {
 
         method: "POST",
 
@@ -866,7 +866,8 @@ export default function LisaAppPage() {
     setPasswordSubmitting(true);
 
     try {
-      const response = await fetch(`${API_BASE_URL}/api/v1/auth/change-password`, {
+      const apiBaseUrl = await getApiBaseUrl();
+      const response = await fetch(`${apiBaseUrl}/api/v1/auth/change-password`, {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },

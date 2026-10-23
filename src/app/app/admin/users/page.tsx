@@ -2,6 +2,7 @@
 
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { useAuth } from "@/providers/AppProviders";
+import { getApiBaseUrl } from "@/lib/api-url";
 
 type AdminUser = {
   user_id: string;
@@ -13,10 +14,9 @@ type AdminUser = {
   temporary_password?: string | null;
 };
 
-const API_BASE_URL = (process.env.NEXT_PUBLIC_LISA_API_URL ?? "http://localhost:8008").replace(/\/$/, "");
-
 async function adminRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const response = await fetch(`${API_BASE_URL}${path}`, {
+  const apiBaseUrl = await getApiBaseUrl();
+  const response = await fetch(`${apiBaseUrl}${path}`, {
     ...init,
     credentials: "include",
     headers: { "Content-Type": "application/json", ...init.headers },

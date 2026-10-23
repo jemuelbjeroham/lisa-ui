@@ -1,6 +1,5 @@
 
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_LISA_API_URL ?? "http://localhost:8008";
+import { getApiBaseUrl } from "./api-url";
 
 type ApiErrorBody = {
   detail?: string;
@@ -27,7 +26,8 @@ export async function apiRequest<T>(
     headers.set("Content-Type", "application/json");
   }
 
-  const response = await fetch(`${API_BASE_URL}${path}`, {
+  const apiBaseUrl = await getApiBaseUrl();
+  const response = await fetch(`${apiBaseUrl}${path}`, {
     ...options,
     headers,
     credentials: "include",
