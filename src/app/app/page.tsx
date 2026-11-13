@@ -2,6 +2,8 @@
 
 import { useAuth } from "@/providers/AppProviders";
 import { getApiBaseUrl } from "@/lib/api-url";
+import { ApprovalPanel } from "@/components/approvals/ApprovalPanel";
+import { useApprovals } from "@/components/approvals/useApprovals";
 import {
   deleteConversation,
   getConversation,
@@ -173,6 +175,18 @@ function Icon({
 
       return <svg {...props}><path d="M12 3 2.8 20h18.4L12 3Z" /><path d="M12 9v5m0 3h.01" /></svg>;
 
+    case "copy":
+
+      return <svg {...props}><rect x="9" y="9" width="11" height="11" rx="2" /><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1" /></svg>;
+
+    case "check":
+
+      return <svg {...props}><path d="m5 12 5 5 9-10" /></svg>;
+
+    case "refresh":
+
+      return <svg {...props}><path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7" /></svg>;
+
     default:
 
       return <svg {...props}><circle cx="12" cy="12" r="9" /></svg>;
@@ -235,6 +249,37 @@ export default function LisaAppPage() {
   const busy = status === "thinking" || status === "generating";
 
   const { user, signOut } = useAuth();
+
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const resumedMessage = useRef<{ conversationId: string; messageId: string } | null>(null);
+  const approvals = useApprovals(activeId, {
+    onResumeState: (running) => {
+      if (running) resumedMessage.current = null;
+      setStatus(running ? "generating" : "idle");
+    },
+    onResumeContent: (text) => {
+      if (!resumedMessage.current || resumedMessage.current.conversationId !== activeId) {
+        const messageId = id();
+        resumedMessage.current = { conversationId: activeId, messageId };
+        patchConversation(activeId, (conversation) => ({ ...conversation,
+          messages: [...conversation.messages, { id: messageId, role: "assistant", content: text }],
+        }));
+      } else {
+        const messageId = resumedMessage.current.messageId;
+        patchConversation(activeId, (conversation) => ({ ...conversation,
+          messages: conversation.messages.map((message) => message.id === messageId
+            ? { ...message, content: message.content + text } : message),
+        }));
+      }
+    },
+  });
+
+  useEffect(() => () => {
+    if (copiedTimer.current) clearTimeout(copiedTimer.current);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -466,6 +511,47 @@ export default function LisaAppPage() {
 
     if (!content || busy) return;
 
+    await streamPrompt(content);
+
+  }
+
+  async function regenerateResponse() {
+
+    if (busy || !active) return;
+
+    const lastUser = [...active.messages].reverse().find((message) => message.role === "user");
+
+    if (!lastUser?.content.trim()) return;
+
+    await streamPrompt(lastUser.content, true);
+
+  }
+
+  async function copyMessage(message: Message) {
+
+    try {
+
+      await navigator.clipboard.writeText(message.content);
+
+      setCopiedId(message.id);
+
+      if (copiedTimer.current) clearTimeout(copiedTimer.current);
+
+      copiedTimer.current = setTimeout(() => setCopiedId(null), 1800);
+
+    } catch (error) {
+
+      console.error("Unable to copy message:", error);
+
+      window.alert("Could not copy this message. Please copy it manually.");
+
+    }
+
+  }
+
+  // Regenerating replaces the reply after the latest user prompt instead of appending a new turn.
+  async function streamPrompt(content: string, regenerate = false) {
+
     const originalConversationId = activeId;
 
     const conversationId = isUuid(originalConversationId) ? originalConversationId : id();
@@ -473,6 +559,18 @@ export default function LisaAppPage() {
     const userMessage: Message = { id: id(), role: "user", content };
 
     const assistantMessageId = id();
+
+    const appendTurn = (messages: Message[]): Message[] => {
+
+      const assistantMessage: Message = { id: assistantMessageId, role: "assistant", content: "" };
+
+      if (!regenerate) return [...messages, userMessage, assistantMessage];
+
+      const lastUserIndex = messages.map((message) => message.role).lastIndexOf("user");
+
+      return [...messages.slice(0, lastUserIndex + 1), assistantMessage];
+
+    };
 
     // Use UUIDs for the API and keep the current conversation's local UI identity.
 
@@ -498,15 +596,7 @@ export default function LisaAppPage() {
 
                     : conversation.title,
 
-                messages: [...conversation.messages, userMessage, {
-
-                  id: assistantMessageId,
-
-                  role: "assistant",
-
-                  content: "",
-
-                }],
+                messages: appendTurn(conversation.messages),
 
               }
 
@@ -532,21 +622,13 @@ export default function LisaAppPage() {
 
             : conversation.title,
 
-        messages: [...conversation.messages, userMessage, {
-
-          id: assistantMessageId,
-
-          role: "assistant",
-
-          content: "",
-
-        }],
+        messages: appendTurn(conversation.messages),
 
       }));
 
     }
 
-    setInput("");
+    if (!regenerate) setInput("");
 
     setStatus(thinking ? "thinking" : "generating");
 
@@ -606,6 +688,7 @@ export default function LisaAppPage() {
       let buffer = "";
 
       let receivedContent = false;
+      let receivedApproval = false;
 
       const handleLine = (line: string) => {
 
@@ -628,6 +711,12 @@ export default function LisaAppPage() {
         }
 
         const eventType = typeof event.type === "string" ? event.type.toLowerCase() : "";
+
+        if (["approval_required", "approval_updated", "tool_execution_status", "execution_suspended", "execution_completed"].includes(eventType)) {
+          receivedApproval = true;
+          approvals.notify(event, conversationId);
+          return;
+        }
 
         if (eventType === "error") {
 
@@ -687,7 +776,13 @@ export default function LisaAppPage() {
 
       if (buffer.trim()) handleLine(buffer);
 
-      if (!receivedContent) {
+      if (receivedApproval && !receivedContent) {
+        patchConversation(conversationId, (conversation) => ({ ...conversation,
+          messages: conversation.messages.filter((message) => message.id !== assistantMessageId || message.content),
+        }));
+      }
+
+      if (!receivedContent && !receivedApproval) {
 
         patchConversation(conversationId, (conversation) => ({
 
@@ -748,6 +843,7 @@ export default function LisaAppPage() {
     } finally {
 
       if (abortRef.current === controller) abortRef.current = null;
+      void approvals.refresh();
 
     }
 
@@ -756,6 +852,7 @@ export default function LisaAppPage() {
   function stopResponse() {
 
     abortRef.current?.abort();
+    approvals.stopResume();
 
     abortRef.current = null;
 
@@ -1242,18 +1339,6 @@ export default function LisaAppPage() {
 
         <div className="sidebar-bottom">
 
-          {!sidebarCollapsed && (
-
-            <div className="connection-indicator">
-
-              <span className="connection-dot" />
-
-              <span>L.I.S.A. API</span>
-
-            </div>
-
-          )}
-
           <button
 
             className="sidebar-profile"
@@ -1727,7 +1812,7 @@ export default function LisaAppPage() {
 
                 <div className="messages">
 
-                  {active.messages.map((message) => {
+                  {active.messages.map((message, index) => {
 
                   // The separate status bubble represents an empty assistant response while streaming.
 
@@ -1772,6 +1857,60 @@ export default function LisaAppPage() {
                         ) : (
 
                           <p>{message.content}</p>
+
+                        )}
+
+                        {message.role === "assistant" && message.content && !(busy && index === active.messages.length - 1) && (
+
+                          <div className="message-actions">
+
+                            <button
+
+                              type="button"
+
+                              className={`message-action ${copiedId === message.id ? "message-action-done" : ""}`}
+
+                              onClick={() => { void copyMessage(message); }}
+
+                              aria-label={copiedId === message.id ? "Copied" : "Copy response"}
+
+                              title="Copy response"
+
+                            >
+
+                              <Icon name={copiedId === message.id ? "check" : "copy"} size={15} />
+
+                              <span>{copiedId === message.id ? "Copied" : "Copy"}</span>
+
+                            </button>
+
+                            {index === active.messages.length - 1 && active.messages.some((item) => item.role === "user") && (
+
+                              <button
+
+                                type="button"
+
+                                className="message-action"
+
+                                onClick={() => { void regenerateResponse(); }}
+
+                                disabled={busy}
+
+                                aria-label="Regenerate response"
+
+                                title="Regenerate response"
+
+                              >
+
+                                <Icon name="refresh" size={15} />
+
+                                <span>Regenerate</span>
+
+                              </button>
+
+                            )}
+
+                          </div>
 
                         )}
 
@@ -1839,13 +1978,23 @@ export default function LisaAppPage() {
 
           <div className="composer-area">
 
+            <div className="approval-stack">
+              {approvals.records.map((approval) => <ApprovalPanel
+                key={approval.approval_id} approval={approval} busy={busy || approvals.busy}
+                onDecide={approvals.decide} onEdit={approvals.edit} onCancel={approvals.cancel}
+                onResume={approvals.resume} onExpire={approvals.expire} onDismiss={approvals.dismiss}
+              />)}
+              {approvals.error && <div className="approval-error" role="alert">
+                <span>{approvals.error}</span>
+                <button type="button" disabled={approvals.busy || approvals.loading} onClick={() => { void approvals.refresh(); }}>Refresh approvals</button>
+              </div>}
+            </div>
+
             <div className="composer-frame">
 
               <div className="composer-topline">
 
                 <div className="composer-mode">
-
-                  <span className="mode-indicator" />
 
                   <span>{thinking ? "Extended thinking" : "L.I.S.A. assistant"}</span>
 
@@ -2187,15 +2336,11 @@ export default function LisaAppPage() {
 
         .sidebar-bottom { position: relative; padding-top: 13px; border-top: 1px solid var(--border); }
 
-        .connection-indicator { display: flex; align-items: center; gap: 9px; padding: 5px 10px 14px; color: #7d8795; font-size: 12px; }
-
-        .connection-dot, .brand-dot, .mode-indicator, .demo-notice-dot, .status-chip-dot {
+        .brand-dot, .demo-notice-dot, .status-chip-dot {
 
           width: 7px; height: 7px; flex: 0 0 7px; border-radius: 50%;
 
         }
-
-        .connection-dot { background: #43d6a0; box-shadow: 0 0 7px rgba(67,214,160,.45); }
 
         .sidebar-profile { width: 100%; gap: 11px; padding: 10px 8px; border: 1px solid transparent; border-radius: 10px; background: transparent; text-align: left; cursor: pointer; }
 
@@ -2298,6 +2443,13 @@ export default function LisaAppPage() {
 
         .markdown-content { color: #d0d6e0; font-size: 15px; line-height: 1.8; overflow-wrap: anywhere; }
 
+        .message-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,.05); }
+        .message-action { display: inline-flex; align-items: center; gap: 6px; padding: 5px 9px; border: 1px solid transparent; border-radius: 7px; background: transparent; color: var(--muted); font-size: 12px; cursor: pointer; transition: color .15s, background .15s, border-color .15s; }
+        .message-action:hover:not(:disabled) { border-color: var(--border); background: rgba(255,255,255,.05); color: var(--text); }
+        .message-action:focus-visible { outline: 1px solid var(--cyan); outline-offset: 1px; }
+        .message-action:disabled { opacity: .45; cursor: not-allowed; }
+        .message-action-done { color: var(--cyan); }
+
         .markdown-content > :first-child { margin-top: 0; }
 
         .markdown-content > :last-child { margin-bottom: 0; }
@@ -2362,6 +2514,12 @@ export default function LisaAppPage() {
 
         .composer-area { position: relative; z-index: 5; width: min(100%,950px); align-self: center; padding: 9px 30px 24px; }
 
+        .approval-stack:empty { display: none; }
+        .approval-stack { max-height: min(48dvh,440px); overflow-y: auto; overflow-x: hidden; padding: 8px 8px 0; margin: -8px -8px 0; }
+        .approval-error { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 6px; padding: 10px 14px; border: 1px solid var(--border); border-radius: 15px; background: var(--panel); color: var(--text); font-size: 13px; }
+        .approval-error span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+        .approval-error button { border: 1px solid var(--border); border-radius: 6px; padding: 6px 9px; background: transparent; cursor: pointer; }
+
         .demo-notice { display: flex; align-items: center; justify-content: center; gap: 8px; margin-bottom: 11px; color: #828c9a; font-size: 12px; }
 
         .demo-notice-dot { background: #d7a14a; box-shadow: 0 0 8px rgba(215,161,74,.3); }
@@ -2387,8 +2545,6 @@ export default function LisaAppPage() {
         .composer-topline { justify-content: space-between; padding: 16px 18px 0; }
 
         .composer-mode { display: flex; align-items: center; gap: 9px; color: #9ba5b4; font-size: 12px; }
-
-        .mode-indicator { background: var(--glow-b); box-shadow: 0 0 7px var(--glow-b); }
 
         .composer-hint { color: #626c7a; font-size: 9px; letter-spacing: .1em; }
 

@@ -1,0 +1,222 @@
+.panel {
+  --approval-accent: #8d4ae7;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  gap: 6px;
+  margin-bottom: 6px;
+  padding: 14px 18px;
+  border: 1px solid rgba(181,111,255,.3);
+  border-radius: 18px;
+  background: rgba(141,74,231,.11);
+  color: #edf1f7;
+  font-size: 13px;
+  line-height: 1.5;
+  letter-spacing: 0;
+  overflow-wrap: anywhere;
+}
+
+.pending {
+  box-shadow: 0 0 12px color-mix(in srgb, var(--approval-accent) 24%, transparent);
+  animation: border-pulse 2.6s ease-in-out infinite;
+}
+
+.header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+}
+
+.header h2 {
+  margin: 0;
+  min-width: 0;
+  color: #d3a6ff;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.status {
+  color: #d3a6ff;
+  font-size: 12px;
+}
+
+.destination,
+.notice,
+.expiry,
+.details p {
+  margin: 0;
+  color: #adb4c1;
+  font-size: 12px;
+}
+
+.notice {
+  color: #efd092;
+}
+
+.fields {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  margin: 0;
+}
+
+.field {
+  display: grid;
+  grid-template-columns: minmax(72px, 110px) minmax(0, 1fr);
+  gap: 6px 12px;
+  min-width: 0;
+}
+
+.field dt {
+  color: #adb4c1;
+}
+
+.field dd {
+  min-width: 0;
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.details {
+  min-width: 0;
+}
+
+.details summary {
+  width: fit-content;
+  color: #d3a6ff;
+  cursor: pointer;
+}
+
+.details[open] > p,
+.details[open] > dl {
+  margin-top: 6px;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+
+.actions:empty {
+  display: none;
+}
+
+.actions button {
+  box-sizing: border-box;
+  max-width: 100%;
+  min-height: 36px;
+  padding: 7px 11px;
+  border: 1px solid rgba(181,111,255,.3);
+  border-radius: 8px;
+  background: transparent;
+  color: #d3a6ff;
+  font: inherit;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+
+.actions button.primary {
+  background: rgba(141,74,231,.11);
+  font-weight: 600;
+}
+
+.actions button:hover:not(:disabled) {
+  border-color: #d3a6ff;
+  background: rgba(141,74,231,.22);
+}
+
+.actions button:disabled {
+  opacity: .5;
+  cursor: not-allowed;
+}
+
+.panel :focus-visible {
+  outline: 2px solid #d3a6ff;
+  outline-offset: 3px;
+}
+
+.form,
+.editFields,
+.editField {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.editFields {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.editFields legend {
+  margin-bottom: 6px;
+  padding: 0;
+  font-weight: 600;
+}
+
+.editField label {
+  color: #adb4c1;
+  font-size: 12px;
+}
+
+.editField textarea,
+.editField select {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  padding: 8px;
+  border: 1px solid rgba(181,111,255,.3);
+  border-radius: 6px;
+  background: #0b0d10;
+  color: #edf1f7;
+  font: inherit;
+}
+
+.editField textarea {
+  min-height: 100px;
+  max-height: 240px;
+  resize: vertical;
+}
+
+@keyframes border-pulse {
+  0%, 100% {
+    box-shadow: 0 0 8px color-mix(in srgb, var(--approval-accent) 15%, transparent), 0 0 20px color-mix(in srgb, var(--approval-accent) 6%, transparent), inset 0 0 8px color-mix(in srgb, var(--approval-accent) 3%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 17px color-mix(in srgb, var(--approval-accent) 37%, transparent), 0 0 36px color-mix(in srgb, var(--approval-accent) 17%, transparent), inset 0 0 12px color-mix(in srgb, var(--approval-accent) 7%, transparent);
+  }
+}
+
+@media (max-width: 680px) {
+  .panel {
+    padding: 12px 14px;
+    border-radius: 15px;
+  }
+
+  .editField textarea,
+  .editField select {
+    font-size: 16px;
+  }
+}
+
+@media (max-width: 360px) {
+  .field {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pending {
+    animation: none;
+  }
+}
