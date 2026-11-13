@@ -113,3 +113,14 @@ test("Jira approvals display the resolved payload and only backend-editable fiel
   assert.ok(presented.fields.some((field) => field.path.startsWith("jira_payload") && field.value === "Recovered"));
   assert.deepEqual(Array.from(presented.editableFields, (field) => field.name), ["comment"]);
 });
+test("Jira create approvals edit generic fields and allow omitted optional defaults", () => {
+  const approval: Approval = { ...fixture({ subject: "Alarm", description: "Loss", priority: "High" }),
+    tool: "create_jira_ticket", operation: "jira.create",
+    editable_fields: ["subject", "description", "project_key", "issue_type", "priority"],
+    effective_operation: { tool_name: "create_jira_ticket", destination: "https://jira.example",
+      ticket_key: null, payload: { fields: { summary: "Alarm" } } } };
+  const presented = presentApproval(approval);
+  assert.equal(presented.editableFields.map((field) => field.name).join(","), "subject,description,priority");
+  assert.equal(presented.needsReview, false);
+  assert.ok(!presented.details.some((entry) => entry.path === "editable_fields"));
+});

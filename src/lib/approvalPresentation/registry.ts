@@ -1,6 +1,9 @@
 import type { Approval } from "../approvals";
 import type { ApprovalEditField, ApprovalPresentation, PresentationEntry } from "./types";
 
+// Optional create-ticket fields; when omitted the backend uses its configured defaults.
+const OPTIONAL_JIRA_FIELDS = ["project_key", "issue_type", "priority"];
+
 export const MEMORY_TYPES = ["fact", "preference", "instruction", "episodic", "project"] as const;
 export const MEMORY_SCOPES = ["user", "project"] as const;
 
@@ -19,7 +22,7 @@ const formatters = new Map([
   ["create_jira_ticket:jira.create", {
     title: "Create a Jira ticket",
     description: "Create a ticket at the resolved Jira destination.",
-    effect: "Creates the exact prepared request shown below. The on-air destination will not be resolved again during execution.",
+    effect: "Creates the exact prepared request shown below. The payload will not be resolved again during execution.",
   }],
   ["update_jira_ticket:jira.comment", {
     title: "Add a Jira comment",
@@ -152,13 +155,12 @@ export function presentApproval(approval: Approval): ApprovalPresentation {
   const editableFields: ApprovalEditField[] = [];
   if (known) {
     const definitions: ApprovalEditField[] = jira ? [
-      { name: "subject", label: "Subject", kind: "textarea", value: "", maxLength: 243 },
+      { name: "subject", label: "Subject", kind: "textarea", value: "", maxLength: 255 },
       { name: "description", label: "Description", kind: "textarea", value: "", maxLength: 32767 },
       { name: "comment", label: "Comment", kind: "textarea", value: "", maxLength: 32767 },
-      { name: "core", label: "Core", kind: "textarea", value: "", maxLength: 255 },
-      { name: "side", label: "Side", kind: "select", value: "", options: ["x", "y", "both"] },
-      { name: "department", label: "Department", kind: "select", value: "", options: ["DC NOC", "Stamford Ops", "DNOC"] },
-      { name: "onair_core", label: "On-air core", kind: "textarea", value: "", maxLength: 255 },
+      { name: "project_key", label: "Project key", kind: "textarea", value: "", maxLength: 255 },
+      { name: "issue_type", label: "Issue type", kind: "textarea", value: "", maxLength: 255 },
+      { name: "priority", label: "Priority", kind: "textarea", value: "", maxLength: 255 },
     ].filter((field) => approval.editable_fields.includes(field.name)) as ApprovalEditField[] : [
       { name: "content", label: "Content", kind: "textarea", value: "", maxLength: 32000 },
       { name: "memory_type", label: "Memory type", kind: "select", value: "", options: MEMORY_TYPES },
@@ -168,7 +170,7 @@ export function presentApproval(approval: Approval): ApprovalPresentation {
       const value = approval.arguments[definition.name];
       const valid = typeof value === "string" && (definition.options
         ? definition.options.includes(value) : value.trim().length > 0 && value.length <= 32000);
-      if (!valid && !(jira && definition.name === "onair_core" && value == null)) needsReview = true;
+      if (!valid && !(jira && OPTIONAL_JIRA_FIELDS.includes(definition.name) && value == null)) needsReview = true;
       if (valid && approval.editable_fields.includes(definition.name) && approval.status === "pending" &&
         approval.execution_status === "pending" && !safeText(value).redacted) {
         editableFields.push({ ...definition, value });
@@ -178,7 +180,8 @@ export function presentApproval(approval: Approval): ApprovalPresentation {
   } else {
     needsReview = true;
   }
-  if (approval.editable_fields.some((key) => !editableFields.some((field) => field.name === key))) {
+  if (approval.editable_fields.some((key) => !editableFields.some((field) => field.name === key) &&
+    !(jira && OPTIONAL_JIRA_FIELDS.includes(key) && approval.arguments[key] == null))) {
     details.push({ path: "editable_fields", label: "Editing", value: "Some supplied fields are not available for editing. Review required." });
   }
   add("target", "Target", approval.target);
